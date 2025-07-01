@@ -42,11 +42,11 @@ const Header = () => {
             <Button variant="ghost" className="text-electric-blue-300 hover:text-electric-blue-100 hover:bg-electric-blue-500/10">
               Projects
             </Button>
-            <Button variant="ghost" className="text-electric-blue-300 hover:text-electric-blue-100 hover:bg-electric-blue-500/10">
-              Templates
+            <Button variant="ghost" className="text-electric-blue-300/50 cursor-not-allowed" disabled>
+              Templates - Coming Soon
             </Button>
-            <Button variant="ghost" className="text-electric-blue-300 hover:text-electric-blue-100 hover:bg-electric-blue-500/10">
-              Docs
+            <Button variant="ghost" className="text-electric-blue-300/50 cursor-not-allowed" disabled>
+              Docs - Coming Soon
             </Button>
           </nav>
 
@@ -78,11 +78,11 @@ const Header = () => {
               <Button variant="ghost" className="w-full justify-start text-electric-blue-300 hover:text-electric-blue-100 hover:bg-electric-blue-500/10">
                 Projects
               </Button>
-              <Button variant="ghost" className="w-full justify-start text-electric-blue-300 hover:text-electric-blue-100 hover:bg-electric-blue-500/10">
-                Templates
+              <Button variant="ghost" className="w-full justify-start text-electric-blue-300/50 cursor-not-allowed" disabled>
+                Templates - Coming Soon
               </Button>
-              <Button variant="ghost" className="w-full justify-start text-electric-blue-300 hover:text-electric-blue-100 hover:bg-electric-blue-500/10">
-                Docs
+              <Button variant="ghost" className="w-full justify-start text-electric-blue-300/50 cursor-not-allowed" disabled>
+                Docs - Coming Soon
               </Button>
             </div>
           </div>
