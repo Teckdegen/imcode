@@ -3,6 +3,7 @@ import { useState } from 'react';
 import Header from '@/components/Header';
 import ChatInterface from '@/components/ChatInterface';
 import CodeEditor from '@/components/CodeEditor';
+import EditorMode from '@/components/EditorMode';
 import ProjectHistory from '@/components/ProjectHistory';
 import { WalletProvider } from '@/providers/WalletProvider';
 import { WalletAuthProvider } from '@/contexts/WalletAuthContext';
@@ -85,12 +86,18 @@ const Index = () => {
 
             {/* Main Interface */}
             <Tabs value={activeView} onValueChange={setActiveView} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 max-w-md mx-auto mb-6 bg-cyber-black-400/50 border border-electric-blue-500/20">
+              <TabsList className="grid w-full grid-cols-4 max-w-lg mx-auto mb-6 bg-cyber-black-400/50 border border-electric-blue-500/20">
                 <TabsTrigger 
                   value="builder" 
                   className="data-[state=active]:bg-electric-blue-500/20 data-[state=active]:text-electric-blue-100"
                 >
-                  Builder
+                  AI Builder
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="editor" 
+                  className="data-[state=active]:bg-electric-blue-500/20 data-[state=active]:text-electric-blue-100"
+                >
+                  Editor
                 </TabsTrigger>
                 <TabsTrigger 
                   value="projects" 
@@ -127,6 +134,12 @@ const Index = () => {
                     )}
                   </div>
                 )}
+              </TabsContent>
+
+              <TabsContent value="editor" className="mt-0">
+                <div className="h-[800px]">
+                  <EditorMode />
+                </div>
               </TabsContent>
 
               <TabsContent value="projects" className="mt-0">
