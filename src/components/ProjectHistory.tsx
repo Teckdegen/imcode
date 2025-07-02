@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -43,11 +42,17 @@ const ProjectHistory = () => {
       if (error) {
         console.error('Error fetching projects:', error);
       } else {
-        // Type cast the status to ensure it matches our interface
+        // Properly convert the database records to our Project interface
         const typedProjects = (data || []).map(project => ({
-          ...project,
+          id: project.id,
+          name: project.name,
+          type: project.type,
+          created_at: project.created_at || new Date().toISOString(),
           status: (project.status as 'deployed' | 'compiled' | 'draft') || 'draft',
-          files: Array.isArray(project.files) ? project.files : []
+          files: Array.isArray(project.files) ? 
+            project.files.filter(file => typeof file === 'string') as string[] : [],
+          contract_address: project.contract_address || undefined,
+          tx_hash: project.tx_hash || undefined
         }));
         setProjects(typedProjects);
       }
