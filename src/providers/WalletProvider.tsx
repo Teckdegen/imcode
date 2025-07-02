@@ -7,12 +7,12 @@ import { ReactNode } from 'react';
 
 // Umi Network configuration
 const umiNetwork = {
-  id: 4090, // Umi chain ID
-  name: 'Umi Network',
+  id: 42069, // Umi chain ID
+  name: 'Umi Devnet',
   nativeCurrency: {
     decimals: 18,
-    name: 'UMI',
-    symbol: 'UMI',
+    name: 'ETH',
+    symbol: 'ETH',
   },
   rpcUrls: {
     default: {
