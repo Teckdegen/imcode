@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Menu, X, Code, Zap } from 'lucide-react';
+import { Menu, X, Code, Zap, Wrench } from 'lucide-react';
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -28,13 +28,22 @@ const Header = () => {
                 <span className="text-xs text-electric-blue-300 -mt-1">Blue & Black</span>
               </div>
             </div>
-            <Badge 
-              variant="outline" 
-              className="bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/30 animate-pulse-slow"
-            >
-              <Zap className="w-3 h-3 mr-1" />
-              We are in Beta
-            </Badge>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Badge 
+                variant="outline" 
+                className="bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/30 animate-pulse-slow"
+              >
+                <Zap className="w-3 h-3 mr-1" />
+                We are in Beta
+              </Badge>
+              <Badge 
+                variant="outline" 
+                className="bg-amber-500/10 text-amber-300 border-amber-500/30 animate-pulse-slow"
+              >
+                <Wrench className="w-3 h-3 mr-1" />
+                Solidity Coming Soon
+              </Badge>
+            </div>
           </div>
 
           {/* Desktop Navigation */}

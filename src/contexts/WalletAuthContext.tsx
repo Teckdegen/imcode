@@ -42,6 +42,8 @@ export const WalletAuthProvider = ({ children }: WalletAuthProviderProps) => {
   const fetchOrCreateProfile = async (walletAddress: string) => {
     setIsLoading(true);
     try {
+      console.log('Fetching profile for wallet:', walletAddress);
+      
       // First try to get existing profile
       const { data: existingProfile, error: fetchError } = await supabase
         .from('user_profiles')
@@ -51,32 +53,64 @@ export const WalletAuthProvider = ({ children }: WalletAuthProviderProps) => {
 
       if (existingProfile) {
         console.log('Found existing profile:', existingProfile);
-        setUserProfile(existingProfile);
+        // Ensure we have proper default values
+        const profileWithDefaults = {
+          ...existingProfile,
+          messages_used: existingProfile.messages_used ?? 0,
+          total_messages_allowed: existingProfile.total_messages_allowed ?? 5
+        };
+        setUserProfile(profileWithDefaults);
       } else if (fetchError?.code === 'PGRST116') {
         // Profile doesn't exist, create new one with explicit default values
         console.log('Creating new profile for:', walletAddress);
+        const newProfileData = {
+          wallet_address: walletAddress,
+          messages_used: 0,
+          total_messages_allowed: 5,
+          last_message_reset: new Date().toISOString()
+        };
+        
         const { data: newProfile, error: insertError } = await supabase
           .from('user_profiles')
-          .insert([{ 
-            wallet_address: walletAddress,
-            messages_used: 0,
-            total_messages_allowed: 5,
-            last_message_reset: new Date().toISOString()
-          }])
+          .insert([newProfileData])
           .select()
           .single();
 
         if (insertError) {
           console.error('Error creating profile:', insertError);
+          // If creation fails, set a default profile to prevent UI issues
+          setUserProfile({
+            id: 'temp-' + walletAddress,
+            wallet_address: walletAddress,
+            messages_used: 0,
+            total_messages_allowed: 5,
+            last_message_reset: new Date().toISOString()
+          });
         } else {
           console.log('Created new profile:', newProfile);
           setUserProfile(newProfile);
         }
       } else {
         console.error('Error fetching profile:', fetchError);
+        // Set a default profile to prevent UI issues
+        setUserProfile({
+          id: 'temp-' + walletAddress,
+          wallet_address: walletAddress,
+          messages_used: 0,
+          total_messages_allowed: 5,
+          last_message_reset: new Date().toISOString()
+        });
       }
     } catch (error) {
       console.error('Error in fetchOrCreateProfile:', error);
+      // Set a default profile to prevent UI issues
+      setUserProfile({
+        id: 'temp-' + walletAddress,
+        wallet_address: walletAddress,
+        messages_used: 0,
+        total_messages_allowed: 5,
+        last_message_reset: new Date().toISOString()
+      });
     } finally {
       setIsLoading(false);
     }
@@ -117,9 +151,9 @@ export const WalletAuthProvider = ({ children }: WalletAuthProviderProps) => {
     }
   }, [address, isConnected]);
 
-  // Calculate messages remaining with proper fallbacks
+  // Calculate messages remaining with proper fallbacks and ensure it's never negative
   const messagesRemaining = userProfile ? 
-    Math.max(0, (userProfile.total_messages_allowed || 5) - (userProfile.messages_used || 0)) : 0;
+    Math.max(0, (userProfile.total_messages_allowed || 5) - (userProfile.messages_used || 0)) : 5;
   
   const canSendMessage = messagesRemaining > 0 && isConnected && userProfile !== null;
 
