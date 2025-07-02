@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet } from 'lucide-react';
+import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2 } from 'lucide-react';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -22,10 +22,10 @@ interface Message {
 
 const ChatInterface = () => {
   const { isConnected } = useAccount();
-  const { userProfile, messagesRemaining, canSendMessage, incrementMessageCount } = useWalletAuth();
+  const { userProfile, messagesRemaining, canSendMessage, incrementMessageCount, isLoading } = useWalletAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -36,8 +36,8 @@ const ChatInterface = () => {
   }, [messages]);
 
   useEffect(() => {
-    // Load initial welcome message when wallet is connected
-    if (isConnected && userProfile && messages.length === 0) {
+    // Load initial welcome message when wallet is connected and profile is loaded
+    if (isConnected && userProfile && !isLoading && messages.length === 0) {
       const welcomeMessage: Message = {
         id: '1',
         type: 'assistant',
@@ -46,10 +46,10 @@ const ChatInterface = () => {
       };
       setMessages([welcomeMessage]);
     }
-  }, [isConnected, userProfile, messagesRemaining, messages.length]);
+  }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !canSendMessage || isLoading) return;
+    if (!inputValue.trim() || !canSendMessage || isSending) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -60,7 +60,7 @@ const ChatInterface = () => {
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
-    setIsLoading(true);
+    setIsSending(true);
 
     try {
       // Increment message count first
@@ -97,7 +97,7 @@ const ChatInterface = () => {
         variant: "destructive"
       });
     } finally {
-      setIsLoading(false);
+      setIsSending(false);
     }
   };
 
@@ -132,6 +132,29 @@ const ChatInterface = () => {
                 Connect your wallet to start chatting with the AI assistant and access all features of ImCode Blue & Black.
               </p>
               <ConnectButton />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show loading state while profile is being fetched
+  if (isLoading) {
+    return (
+      <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm flex flex-col">
+        <CardContent className="flex-1 flex flex-col items-center justify-center p-8">
+          <div className="text-center space-y-6">
+            <div className="w-16 h-16 bg-electric-blue-500/20 rounded-full flex items-center justify-center mx-auto">
+              <Loader2 className="w-8 h-8 text-electric-blue-400 animate-spin" />
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold text-electric-blue-100 mb-2">
+                Loading Your Profile
+              </h3>
+              <p className="text-electric-blue-300/80">
+                Setting up your AI assistant session...
+              </p>
             </div>
           </div>
         </CardContent>
@@ -194,7 +217,7 @@ const ChatInterface = () => {
                 {index < messages.length - 1 && <Separator className="my-4 bg-electric-blue-500/10" />}
               </div>
             ))}
-            {isLoading && (
+            {isSending && (
               <div className="flex gap-3">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-500/20 text-green-300 flex items-center justify-center">
                   <Bot className="w-4 h-4" />
@@ -227,14 +250,14 @@ const ChatInterface = () => {
                 onKeyPress={handleKeyPress}
                 placeholder="Ask me to create a token, NFT, DeFi protocol, or any Move contract..."
                 className="flex-1 bg-cyber-black-300/50 border-electric-blue-500/20 text-electric-blue-100 placeholder:text-electric-blue-400/60 focus:border-electric-blue-500/40 focus:ring-electric-blue-500/20"
-                disabled={isLoading}
+                disabled={isSending}
               />
               <Button 
                 onClick={handleSendMessage}
-                disabled={!inputValue.trim() || isLoading || !canSendMessage}
+                disabled={!inputValue.trim() || isSending || !canSendMessage}
                 className="bg-electric-blue-500 hover:bg-electric-blue-600 text-white px-4"
               >
-                <Send className="w-4 h-4" />
+                {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               </Button>
             </div>
           )}

@@ -50,18 +50,26 @@ export const WalletAuthProvider = ({ children }: WalletAuthProviderProps) => {
         .single();
 
       if (existingProfile) {
+        console.log('Found existing profile:', existingProfile);
         setUserProfile(existingProfile);
       } else if (fetchError?.code === 'PGRST116') {
-        // Profile doesn't exist, create new one
+        // Profile doesn't exist, create new one with explicit default values
+        console.log('Creating new profile for:', walletAddress);
         const { data: newProfile, error: insertError } = await supabase
           .from('user_profiles')
-          .insert([{ wallet_address: walletAddress }])
+          .insert([{ 
+            wallet_address: walletAddress,
+            messages_used: 0,
+            total_messages_allowed: 5,
+            last_message_reset: new Date().toISOString()
+          }])
           .select()
           .single();
 
         if (insertError) {
           console.error('Error creating profile:', insertError);
         } else {
+          console.log('Created new profile:', newProfile);
           setUserProfile(newProfile);
         }
       } else {
@@ -101,16 +109,29 @@ export const WalletAuthProvider = ({ children }: WalletAuthProviderProps) => {
 
   useEffect(() => {
     if (address && isConnected) {
+      console.log('Wallet connected, fetching profile for:', address);
       fetchOrCreateProfile(address);
     } else {
+      console.log('Wallet disconnected, clearing profile');
       setUserProfile(null);
     }
   }, [address, isConnected]);
 
+  // Calculate messages remaining with proper fallbacks
   const messagesRemaining = userProfile ? 
-    Math.max(0, userProfile.total_messages_allowed - userProfile.messages_used) : 0;
+    Math.max(0, (userProfile.total_messages_allowed || 5) - (userProfile.messages_used || 0)) : 0;
   
-  const canSendMessage = messagesRemaining > 0 && isConnected;
+  const canSendMessage = messagesRemaining > 0 && isConnected && userProfile !== null;
+
+  console.log('WalletAuth state:', {
+    isConnected,
+    hasProfile: !!userProfile,
+    messagesUsed: userProfile?.messages_used,
+    totalAllowed: userProfile?.total_messages_allowed,
+    messagesRemaining,
+    canSendMessage,
+    isLoading
+  });
 
   return (
     <WalletAuthContext.Provider value={{
