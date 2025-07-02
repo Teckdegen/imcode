@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,6 +18,7 @@ import {
   XCircle,
   AlertCircle
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface FileNode {
   name: string;
@@ -27,14 +28,78 @@ interface FileNode {
   functions?: string[];
 }
 
-const CodeEditor = () => {
+interface CodeEditorProps {
+  onProjectEdit?: () => void;
+}
+
+const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
   const [activeTab, setActiveTab] = useState('editor');
   const [selectedFile, setSelectedFile] = useState('token.move');
+  const [isEditing, setIsEditing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
   const [consoleOutput, setConsoleOutput] = useState([
     { type: 'info', message: 'ImCode Blue & Black - Move Smart Contract IDE', timestamp: new Date() },
     { type: 'success', message: 'Connected to Umi Network Devnet', timestamp: new Date() },
     { type: 'info', message: 'Ready to compile and deploy Move contracts', timestamp: new Date() }
   ]);
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    
+    // Check if file is a text file
+    const textFileTypes = [
+      'text/plain',
+      'text/javascript',
+      'text/typescript',
+      'application/json',
+      'text/html',
+      'text/css',
+      'text/markdown',
+      'application/x-javascript',
+      'application/javascript'
+    ];
+
+    const isTextFile = textFileTypes.includes(file.type) || 
+                      file.name.endsWith('.move') ||
+                      file.name.endsWith('.js') ||
+                      file.name.endsWith('.ts') ||
+                      file.name.endsWith('.json') ||
+                      file.name.endsWith('.toml') ||
+                      file.name.endsWith('.md') ||
+                      file.name.endsWith('.txt');
+
+    if (!isTextFile) {
+      toast({
+        title: "Invalid File Type",
+        description: "Only text files are allowed. Please upload .move, .js, .ts, .json, .toml, .md, or .txt files.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Read the file content
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      console.log('File uploaded:', file.name, content);
+      toast({
+        title: "File Uploaded",
+        description: `Successfully uploaded ${file.name}`,
+      });
+    };
+    reader.readAsText(file);
+  };
+
+  const handleStartEditing = () => {
+    setIsEditing(true);
+    if (onProjectEdit) {
+      onProjectEdit();
+    }
+  };
 
   const projectFiles: FileNode[] = [
     {
@@ -161,7 +226,14 @@ main().catch(console.error);`
           className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-electric-blue-500/10 ${
             selectedFile === file.name ? 'bg-electric-blue-500/20 text-electric-blue-100' : 'text-electric-blue-300'
           }`}
-          onClick={() => file.type === 'file' && setSelectedFile(file.name)}
+          onClick={() => {
+            if (file.type === 'file') {
+              setSelectedFile(file.name);
+              if (!isEditing) {
+                handleStartEditing();
+              }
+            }
+          }}
         >
           {file.type === 'folder' ? (
             <Folder className="w-4 h-4 text-electric-blue-400" />
@@ -216,9 +288,21 @@ main().catch(console.error);`
             Code Editor
           </CardTitle>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".move,.js,.ts,.json,.toml,.md,.txt,text/*"
+              style={{ display: 'none' }}
+            />
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10"
+              onClick={() => fileInputRef.current?.click()}
+            >
               <Upload className="w-4 h-4 mr-1" />
-              Upload
+              Upload Text
             </Button>
             <Button size="sm" variant="outline" className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10">
               <Download className="w-4 h-4 mr-1" />

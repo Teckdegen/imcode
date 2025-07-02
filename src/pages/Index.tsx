@@ -13,6 +13,16 @@ import { Code, Zap, Rocket, Shield } from 'lucide-react';
 
 const Index = () => {
   const [activeView, setActiveView] = useState('builder');
+  const [hasInteractedWithAI, setHasInteractedWithAI] = useState(false);
+  const [isEditingProject, setIsEditingProject] = useState(false);
+
+  const handleAIInteraction = () => {
+    setHasInteractedWithAI(true);
+  };
+
+  const handleProjectEdit = () => {
+    setIsEditingProject(true);
+  };
 
   return (
     <WalletProvider>
@@ -97,14 +107,26 @@ const Index = () => {
               </TabsList>
 
               <TabsContent value="builder" className="mt-0">
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 h-[800px]">
-                  <div className="xl:col-span-2">
-                    <CodeEditor />
+                {!hasInteractedWithAI ? (
+                  <div className="max-w-4xl mx-auto h-[800px]">
+                    <ChatInterface onAIInteraction={handleAIInteraction} />
                   </div>
-                  <div className="xl:col-span-1">
-                    <ChatInterface />
+                ) : (
+                  <div className={`grid gap-6 h-[800px] transition-all duration-300 ${
+                    isEditingProject ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-3'
+                  }`}>
+                    <div className={`transition-all duration-300 ${
+                      isEditingProject ? 'col-span-1' : 'xl:col-span-2'
+                    }`}>
+                      <CodeEditor onProjectEdit={handleProjectEdit} />
+                    </div>
+                    {!isEditingProject && (
+                      <div className="xl:col-span-1">
+                        <ChatInterface onAIInteraction={handleAIInteraction} />
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
               </TabsContent>
 
               <TabsContent value="projects" className="mt-0">
@@ -115,7 +137,7 @@ const Index = () => {
 
               <TabsContent value="chat" className="mt-0">
                 <div className="max-w-4xl mx-auto h-[800px]">
-                  <ChatInterface />
+                  <ChatInterface onAIInteraction={handleAIInteraction} />
                 </div>
               </TabsContent>
             </Tabs>

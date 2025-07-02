@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -20,7 +19,11 @@ interface Message {
   timestamp: Date;
 }
 
-const ChatInterface = () => {
+interface ChatInterfaceProps {
+  onAIInteraction?: () => void;
+}
+
+const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   const { isConnected } = useAccount();
   const { userProfile, messagesRemaining, canSendMessage, incrementMessageCount, isLoading } = useWalletAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -41,7 +44,9 @@ const ChatInterface = () => {
       const welcomeMessage: Message = {
         id: '1',
         type: 'assistant',
-        content: `Welcome to ImCode Blue & Black! I'm your AI assistant specialized in Move smart contract development for the Umi Network. I can help you create tokens, NFTs, DeFi protocols, governance systems, and more. You have ${messagesRemaining} questions remaining in this session.`,
+        content: `Welcome to ImCode Blue & Black! I'm your AI assistant specialized in Move smart contract development for the Umi Network. I can help you create tokens, NFTs, DeFi protocols, governance systems, and more. You have ${messagesRemaining} questions remaining in this session.
+
+Start by telling me what kind of smart contract you'd like to create!`,
         timestamp: new Date()
       };
       setMessages([welcomeMessage]);
@@ -61,6 +66,11 @@ const ChatInterface = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsSending(true);
+
+    // Trigger the AI interaction callback
+    if (onAIInteraction) {
+      onAIInteraction();
+    }
 
     try {
       // Increment message count first
