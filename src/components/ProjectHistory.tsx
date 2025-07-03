@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,8 @@ import {
   FileText,
   Rocket,
   Clock,
-  CheckCircle
+  CheckCircle,
+  RefreshCw
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -42,52 +44,95 @@ interface Project {
 const ProjectHistory = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const { toast } = useToast();
   const { userProfile } = useWalletAuth();
 
-  useEffect(() => {
-    loadProjects();
-  }, [userProfile]);
-
-  const loadProjects = async () => {
+  const loadProjects = async (showRefreshingIndicator = false) => {
     if (!userProfile) {
       setLoading(false);
       return;
     }
 
     try {
+      if (showRefreshingIndicator) setRefreshing(true);
+      
+      console.log('Loading projects for user:', userProfile.id);
+      
       const { data, error } = await supabase
         .from('projects')
         .select('*')
         .eq('user_id', userProfile.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      console.log('Projects query result:', { data, error });
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
       // Convert the data to match our Project interface
-      const convertedProjects: Project[] = (data || []).map(item => ({
-        id: item.id,
-        name: item.name,
-        type: item.type,
-        status: item.status,
-        created_at: item.created_at || '',
-        tx_hash: item.tx_hash || undefined,
-        contract_address: item.contract_address || undefined,
-        files: Array.isArray(item.files) ? (item.files as unknown as ProjectFile[]) : []
-      }));
+      const convertedProjects: Project[] = (data || []).map(item => {
+        console.log('Processing project item:', item);
+        
+        let files: ProjectFile[] = [];
+        if (item.files) {
+          try {
+            // Handle both array and object formats
+            if (Array.isArray(item.files)) {
+              files = item.files as unknown as ProjectFile[];
+            } else if (typeof item.files === 'object') {
+              files = Object.values(item.files) as ProjectFile[];
+            }
+          } catch (e) {
+            console.error('Error parsing files for project:', item.id, e);
+            files = [];
+          }
+        }
 
+        return {
+          id: item.id,
+          name: item.name || 'Untitled Project',
+          type: item.type || 'move_contract',
+          status: item.status || 'draft',
+          created_at: item.created_at || new Date().toISOString(),
+          tx_hash: item.tx_hash || undefined,
+          contract_address: item.contract_address || undefined,
+          files: files
+        };
+      });
+
+      console.log('Converted projects:', convertedProjects);
       setProjects(convertedProjects);
+      
+      if (showRefreshingIndicator) {
+        toast({
+          title: "Projects Refreshed",
+          description: `Loaded ${convertedProjects.length} project(s)`,
+        });
+      }
     } catch (error) {
       console.error('Error loading projects:', error);
       toast({
         title: "Failed to Load Projects",
-        description: "There was an error loading your projects.",
+        description: "There was an error loading your projects. Please try refreshing.",
         variant: "destructive"
       });
     } finally {
       setLoading(false);
+      if (showRefreshingIndicator) setRefreshing(false);
     }
+  };
+
+  useEffect(() => {
+    console.log('ProjectHistory useEffect triggered, userProfile:', userProfile);
+    loadProjects();
+  }, [userProfile]);
+
+  const handleRefresh = () => {
+    loadProjects(true);
   };
 
   const deleteProject = async (projectId: string) => {
@@ -153,10 +198,22 @@ const ProjectHistory = () => {
   return (
     <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm">
       <CardHeader>
-        <CardTitle className="text-electric-blue-100 flex items-center gap-2">
-          <FolderOpen className="w-5 h-5" />
-          Project History
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-electric-blue-100 flex items-center gap-2">
+            <FolderOpen className="w-5 h-5" />
+            Project History
+          </CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10"
+          >
+            <RefreshCw className={`w-4 h-4 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </CardHeader>
       
       <CardContent>
@@ -167,6 +224,13 @@ const ProjectHistory = () => {
             <p className="text-electric-blue-400/70 mb-6">
               Start by asking the AI to create a smart contract, or use the Editor mode to create projects.
             </p>
+            <Button
+              onClick={handleRefresh}
+              className="bg-electric-blue-500 hover:bg-electric-blue-600 text-white"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Check Again
+            </Button>
           </div>
         ) : (
           <ScrollArea className="h-[600px]">

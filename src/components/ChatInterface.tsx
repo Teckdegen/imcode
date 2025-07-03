@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -42,9 +41,11 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
         type: 'assistant',
         content: `Welcome to ImCode Blue & Black! I'm your AI assistant specialized in Move smart contract development for the Umi Network. I can help you create tokens, NFTs, DeFi protocols, governance systems, and more. You have ${messagesRemaining} questions remaining in this session.
 
-When I generate code, I'll automatically create multiple organized files in your editor - never just one big file! Each contract will be broken down into logical components like main logic, configuration, events, utilities, and tests.
+When I generate code, I'll automatically create a complete project structure with multiple organized files and folders - including hardhat.config.js, deploy.js, package.json, and proper folder organization like contracts/, scripts/, tests/, config/, and utils/.
 
-Start by telling me what kind of smart contract you'd like to create!`,
+Each project will be broken down into logical components with proper configuration files for deployment to Umi Network.
+
+Start by telling me what kind of smart contract project you'd like to create!`,
       });
     }
   }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading, addMessage]);
@@ -64,42 +65,76 @@ Start by telling me what kind of smart contract you'd like to create!`,
   };
 
   const generateFileName = (code: string, language: string, index: number) => {
-    // Try to extract module name from code
-    const moduleMatch = code.match(/module\s+[\w:]+::(\w+)/);
-    if (moduleMatch && language === 'move') {
-      return `${moduleMatch[1]}.move`;
+    // Enhanced file naming with folder structure support
+    
+    // Configuration files
+    if (code.includes('module.exports') && code.includes('hardhat')) {
+      return 'hardhat.config.js';
+    }
+    if (code.includes('hardhat run') && code.includes('deploy')) {
+      return 'deploy.js';
+    }
+    if (code.includes('"scripts"') && code.includes('"hardhat"')) {
+      return 'package.json';
+    }
+    if (code.includes('[dependencies]') || code.includes('[package]')) {
+      return 'config/Move.toml';
     }
 
-    // Look for common patterns to generate meaningful names
-    if (code.includes('struct Token') || code.includes('token')) {
-      return `token_${index + 1}.move`;
-    }
-    if (code.includes('struct NFT') || code.includes('nft')) {
-      return `nft_${index + 1}.move`;
-    }
-    if (code.includes('liquidity') || code.includes('pool')) {
-      return `pool_${index + 1}.move`;
-    }
-    if (code.includes('event') || code.includes('Event')) {
-      return `events_${index + 1}.move`;
-    }
-    if (code.includes('config') || code.includes('Config')) {
-      return `config_${index + 1}.move`;
-    }
-    if (code.includes('test') || code.includes('Test')) {
-      return `tests_${index + 1}.move`;
-    }
-    if (code.includes('admin') || code.includes('Admin')) {
-      return `admin_${index + 1}.move`;
-    }
-    if (code.includes('utils') || code.includes('helper')) {
-      return `utils_${index + 1}.move`;
+    // Contract files with folder structure
+    if (language === 'move' || code.includes('module')) {
+      if (code.includes('struct Token') || code.includes('token')) {
+        return `contracts/Token.move`;
+      }
+      if (code.includes('struct NFT') || code.includes('nft')) {
+        return `contracts/NFT.move`;
+      }
+      if (code.includes('liquidity') || code.includes('pool')) {
+        return `contracts/pools/LiquidityPool.move`;
+      }
+      if (code.includes('event') || code.includes('Event')) {
+        return `contracts/TokenEvents.move`;
+      }
+      if (code.includes('config') || code.includes('Config')) {
+        return `contracts/TokenConfig.move`;
+      }
     }
 
-    // Default fallback
-    return language === 'move' 
-      ? `contract_${index + 1}.move`
-      : `file_${index + 1}.${language}`;
+    // Test files
+    if (code.includes('test') || code.includes('Test') || code.includes('#[test]')) {
+      return `tests/${language === 'move' ? 'token_tests.move' : `test_${index + 1}.${language}`}`;
+    }
+
+    // Script files
+    if (language === 'javascript' || language === 'js') {
+      if (code.includes('deploy') || code.includes('Deploy')) {
+        return `scripts/deploy.js`;
+      }
+      if (code.includes('interact') || code.includes('Interact')) {
+        return `scripts/interact.js`;
+      }
+      return `scripts/script_${index + 1}.js`;
+    }
+
+    // Utils and helpers
+    if (code.includes('utils') || code.includes('helper') || code.includes('Helper')) {
+      return `utils/helpers.move`;
+    }
+    if (code.includes('const') && (code.includes('ADDRESS') || code.includes('CONSTANT'))) {
+      return `utils/constants.move`;
+    }
+
+    // Admin and governance
+    if (code.includes('admin') || code.includes('Admin') || code.includes('governance')) {
+      return `contracts/governance/Admin.move`;
+    }
+
+    // Default fallback with folders
+    if (language === 'move') {
+      return `contracts/Contract_${index + 1}.move`;
+    }
+    
+    return `${language === 'javascript' ? 'scripts' : 'contracts'}/file_${index + 1}.${language || 'move'}`;
   };
 
   const handleSendMessage = async () => {
@@ -151,8 +186,8 @@ Start by telling me what kind of smart contract you'd like to create!`,
         });
 
         toast({
-          title: "Code Generated",
-          description: `${codeBlocks.length} file(s) have been added to your editor`,
+          title: "Project Structure Generated",
+          description: `${codeBlocks.length} file(s) with proper folder structure have been added to your editor`,
         });
       }
 
@@ -160,7 +195,7 @@ Start by telling me what kind of smart contract you'd like to create!`,
         type: 'assistant',
         content: aiResponse,
         codeGenerated: codeBlocks.length > 0,
-        fileName: codeBlocks.length > 0 ? `${codeBlocks.length} file(s) created` : undefined
+        fileName: codeBlocks.length > 0 ? `Complete project with ${codeBlocks.length} file(s)` : undefined
       });
 
     } catch (error) {
@@ -288,7 +323,7 @@ Start by telling me what kind of smart contract you'd like to create!`,
                         {message.codeGenerated && (
                           <div className="flex items-center gap-1 text-xs text-green-400">
                             <Code className="w-3 h-3" />
-                            <span>Code added to editor</span>
+                            <span>Project structure created</span>
                           </div>
                         )}
                       </div>
@@ -338,7 +373,7 @@ Start by telling me what kind of smart contract you'd like to create!`,
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask me to create a token, NFT, DeFi protocol, or any Move contract..."
+                placeholder="Ask me to create a complete project with tokens, NFTs, DeFi protocols, or any Move contract..."
                 className="flex-1 bg-cyber-black-300/50 border-electric-blue-500/20 text-electric-blue-100 placeholder:text-electric-blue-400/60 focus:border-electric-blue-500/40 focus:ring-electric-blue-500/20"
                 disabled={isSending}
               />
