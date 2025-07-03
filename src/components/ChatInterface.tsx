@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
@@ -7,17 +8,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2 } from 'lucide-react';
+import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2, Code, FileText } from 'lucide-react';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
+import { useChatHistory } from '@/contexts/ChatHistoryContext';
+import { useAICode } from '@/contexts/AICodeContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-
-interface Message {
-  id: string;
-  type: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
 
 interface ChatInterfaceProps {
   onAIInteraction?: () => void;
@@ -26,7 +22,8 @@ interface ChatInterfaceProps {
 const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   const { isConnected } = useAccount();
   const { userProfile, messagesRemaining, canSendMessage, incrementMessageCount, isLoading } = useWalletAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
+  const { messages, addMessage } = useChatHistory();
+  const { addFileFromAI } = useAICode();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -41,29 +38,38 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   useEffect(() => {
     // Load initial welcome message when wallet is connected and profile is loaded
     if (isConnected && userProfile && !isLoading && messages.length === 0) {
-      const welcomeMessage: Message = {
-        id: '1',
+      addMessage({
         type: 'assistant',
         content: `Welcome to ImCode Blue & Black! I'm your AI assistant specialized in Move smart contract development for the Umi Network. I can help you create tokens, NFTs, DeFi protocols, governance systems, and more. You have ${messagesRemaining} questions remaining in this session.
 
-Start by telling me what kind of smart contract you'd like to create!`,
-        timestamp: new Date()
-      };
-      setMessages([welcomeMessage]);
+When I generate code, it will automatically be added to your editor with files created for you. Start by telling me what kind of smart contract you'd like to create!`,
+      });
     }
-  }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading]);
+  }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading, addMessage]);
+
+  const extractCodeFromResponse = (response: string) => {
+    const codeBlocks = [];
+    const regex = /```(\w+)?\n([\s\S]*?)```/g;
+    let match;
+    
+    while ((match = regex.exec(response)) !== null) {
+      const language = match[1] || 'move';
+      const code = match[2];
+      codeBlocks.push({ language, code });
+    }
+    
+    return codeBlocks;
+  };
 
   const handleSendMessage = async () => {
     if (!inputValue.trim() || !canSendMessage || isSending) return;
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
+    addMessage({
       type: 'user',
       content: inputValue,
-      timestamp: new Date()
-    };
+    });
 
-    setMessages(prev => [...prev, userMessage]);
+    const currentInput = inputValue;
     setInputValue('');
     setIsSending(true);
 
@@ -79,7 +85,7 @@ Start by telling me what kind of smart contract you'd like to create!`,
       // Call AI function
       const { data, error } = await supabase.functions.invoke('ai-chat', {
         body: {
-          message: inputValue,
+          message: currentInput,
           context: messages.slice(-4).map(msg => ({
             role: msg.type === 'user' ? 'user' : 'assistant',
             content: msg.content
@@ -91,14 +97,34 @@ Start by telling me what kind of smart contract you'd like to create!`,
         throw error;
       }
 
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        type: 'assistant',
-        content: data.response,
-        timestamp: new Date()
-      };
+      const aiResponse = data.response;
+      
+      // Extract code blocks from the response
+      const codeBlocks = extractCodeFromResponse(aiResponse);
+      
+      // Add files to editor if code blocks are found
+      if (codeBlocks.length > 0) {
+        codeBlocks.forEach((block, index) => {
+          const fileName = block.language === 'move' 
+            ? `contract_${Date.now()}_${index}.move`
+            : `file_${Date.now()}_${index}.${block.language}`;
+          
+          addFileFromAI(fileName, block.code, block.language);
+        });
 
-      setMessages(prev => [...prev, aiResponse]);
+        toast({
+          title: "Code Generated",
+          description: `${codeBlocks.length} file(s) have been added to your editor`,
+        });
+      }
+
+      addMessage({
+        type: 'assistant',
+        content: aiResponse,
+        codeGenerated: codeBlocks.length > 0,
+        fileName: codeBlocks.length > 0 ? `${codeBlocks.length} file(s) created` : undefined
+      });
+
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -217,7 +243,23 @@ Start by telling me what kind of smart contract you'd like to create!`,
                         ? 'bg-electric-blue-500/20 text-electric-blue-100 border border-electric-blue-500/30'
                         : 'bg-cyber-black-300/50 text-electric-blue-200 border border-electric-blue-500/10'
                     }`}>
-                      <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1">
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
+                        </div>
+                        {message.codeGenerated && (
+                          <div className="flex items-center gap-1 text-xs text-green-400">
+                            <Code className="w-3 h-3" />
+                            <span>Code added to editor</span>
+                          </div>
+                        )}
+                      </div>
+                      {message.fileName && (
+                        <div className="flex items-center gap-1 mt-2 text-xs text-electric-blue-400">
+                          <FileText className="w-3 h-3" />
+                          <span>{message.fileName}</span>
+                        </div>
+                      )}
                     </div>
                     <p className="text-xs text-electric-blue-400/60 mt-1">
                       {formatTime(message.timestamp)}

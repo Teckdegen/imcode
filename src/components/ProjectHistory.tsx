@@ -1,37 +1,53 @@
+
 import { useState, useEffect } from 'react';
-import { useAccount } from 'wagmi';
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
-import { FileText, Calendar, ExternalLink, Trash2, Edit, Wallet, FolderOpen, Upload, Download } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { 
+  FolderOpen, 
+  Calendar, 
+  ExternalLink, 
+  Trash2, 
+  Eye,
+  FileText,
+  Rocket,
+  Clock,
+  CheckCircle
+} from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
-import { toast } from 'sonner';
 
 interface Project {
   id: string;
   name: string;
   type: string;
+  status: string;
   created_at: string;
-  status: 'deployed' | 'compiled' | 'draft';
-  files: string[];
-  contract_address?: string;
   tx_hash?: string;
+  contract_address?: string;
+  files?: any[];
 }
 
 const ProjectHistory = () => {
-  const { isConnected } = useAccount();
-  const { userProfile } = useWalletAuth();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const { toast } = useToast();
+  const { userProfile } = useWalletAuth();
 
-  const fetchProjects = async () => {
-    if (!userProfile) return;
-    
-    setIsLoading(true);
+  useEffect(() => {
+    loadProjects();
+  }, [userProfile]);
+
+  const loadProjects = async () => {
+    if (!userProfile) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('projects')
@@ -39,205 +55,75 @@ const ProjectHistory = () => {
         .eq('user_id', userProfile.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching projects:', error);
-      } else {
-        // Properly convert the database records to our Project interface
-        const typedProjects = (data || []).map(project => ({
-          id: project.id,
-          name: project.name,
-          type: project.type,
-          created_at: project.created_at || new Date().toISOString(),
-          status: (project.status as 'deployed' | 'compiled' | 'draft') || 'draft',
-          files: Array.isArray(project.files) ? 
-            project.files.filter(file => typeof file === 'string') as string[] : [],
-          contract_address: project.contract_address || undefined,
-          tx_hash: project.tx_hash || undefined
-        }));
-        setProjects(typedProjects);
-      }
+      if (error) throw error;
+
+      setProjects(data || []);
     } catch (error) {
-      console.error('Error fetching projects:', error);
+      console.error('Error loading projects:', error);
+      toast({
+        title: "Failed to Load Projects",
+        description: "There was an error loading your projects.",
+        variant: "destructive"
+      });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleExportProject = (project: Project) => {
-    const projectData = {
-      name: project.name,
-      type: project.type,
-      status: project.status,
-      files: project.files,
-      contract_address: project.contract_address,
-      tx_hash: project.tx_hash,
-      created_at: project.created_at
-    };
+  const deleteProject = async (projectId: string) => {
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId);
 
-    const dataStr = JSON.stringify(projectData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(dataBlob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${project.name.replace(/\s+/g, '_')}_project.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    toast.success(`Project "${project.name}" exported successfully!`);
-  };
+      if (error) throw error;
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const content = e.target?.result as string;
-        const projectData = JSON.parse(content);
-        
-        // Validate the imported project data
-        if (!projectData.name || !projectData.type) {
-          toast.error('Invalid project file format');
-          return;
-        }
-
-        // Create new project in database
-        if (userProfile) {
-          const { data, error } = await supabase
-            .from('projects')
-            .insert([{
-              name: `${projectData.name} (Imported)`,
-              type: projectData.type,
-              status: 'draft',
-              files: projectData.files || [],
-              user_id: userProfile.id
-            }])
-            .select()
-            .single();
-
-          if (error) {
-            console.error('Error importing project:', error);
-            toast.error('Failed to import project');
-          } else {
-            toast.success(`Project "${projectData.name}" imported successfully!`);
-            fetchProjects(); // Refresh the list
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing project file:', error);
-        toast.error('Failed to parse project file');
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      const file = files[0];
-      if (file.type === 'application/json' || file.name.endsWith('.json')) {
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-          try {
-            const content = event.target?.result as string;
-            const projectData = JSON.parse(content);
-            
-            if (!projectData.name || !projectData.type) {
-              toast.error('Invalid project file format');
-              return;
-            }
-
-            if (userProfile) {
-              const { data, error } = await supabase
-                .from('projects')
-                .insert([{
-                  name: `${projectData.name} (Imported)`,
-                  type: projectData.type,
-                  status: 'draft',
-                  files: projectData.files || [],
-                  user_id: userProfile.id
-                }])
-                .select()
-                .single();
-
-              if (error) {
-                console.error('Error importing project:', error);
-                toast.error('Failed to import project');
-              } else {
-                toast.success(`Project "${projectData.name}" imported successfully!`);
-                fetchProjects();
-              }
-            }
-          } catch (error) {
-            console.error('Error parsing dropped file:', error);
-            toast.error('Failed to parse project file');
-          }
-        };
-        reader.readAsText(file);
-      } else {
-        toast.error('Please drop a JSON project file');
-      }
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      
+      toast({
+        title: "Project Deleted",
+        description: "Project has been permanently deleted."
+      });
+    } catch (error) {
+      console.error('Error deleting project:', error);
+      toast({
+        title: "Delete Failed",
+        description: "Failed to delete project. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
-  useEffect(() => {
-    if (isConnected && userProfile) {
-      fetchProjects();
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'deployed':
+        return <CheckCircle className="w-4 h-4 text-green-400" />;
+      case 'draft':
+        return <Clock className="w-4 h-4 text-yellow-400" />;
+      default:
+        return <FileText className="w-4 h-4 text-electric-blue-400" />;
     }
-  }, [isConnected, userProfile]);
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'deployed':
         return 'bg-green-500/20 text-green-300 border-green-500/30';
-      case 'compiled':
-        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
       case 'draft':
-        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+        return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
       default:
-        return 'bg-gray-500/20 text-gray-300 border-gray-500/30';
+        return 'bg-electric-blue-500/20 text-electric-blue-300 border-electric-blue-500/30';
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  if (!isConnected) {
+  if (loading) {
     return (
       <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm">
-        <CardContent className="flex-1 flex flex-col items-center justify-center p-8">
-          <div className="text-center space-y-6">
-            <div className="w-16 h-16 bg-electric-blue-500/20 rounded-full flex items-center justify-center mx-auto">
-              <Wallet className="w-8 h-8 text-electric-blue-400" />
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-electric-blue-100 mb-2">
-                Connect Your Wallet
-              </h3>
-              <p className="text-electric-blue-300/80 mb-6 max-w-sm">
-                Connect your wallet to view and manage your Move smart contract projects.
-              </p>
-              <ConnectButton />
-            </div>
+        <CardContent className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <div className="w-8 h-8 bg-electric-blue-500 rounded-full animate-pulse mx-auto mb-4"></div>
+            <p className="text-electric-blue-300">Loading projects...</p>
           </div>
         </CardContent>
       </Card>
@@ -245,154 +131,130 @@ const ProjectHistory = () => {
   }
 
   return (
-    <Card 
-      className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm"
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-electric-blue-100 flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Project History
-            </CardTitle>
-            <CardDescription className="text-electric-blue-300">
-              Your Move smart contracts and deployment history
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="file"
-              accept=".json"
-              onChange={handleFileUpload}
-              className="hidden"
-              id="file-upload"
-            />
-            <label htmlFor="file-upload">
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10 cursor-pointer"
-                asChild
-              >
-                <span>
-                  <Upload className="w-4 h-4 mr-1" />
-                  Upload
-                </span>
-              </Button>
-            </label>
-          </div>
-        </div>
+    <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm">
+      <CardHeader>
+        <CardTitle className="text-electric-blue-100 flex items-center gap-2">
+          <FolderOpen className="w-5 h-5" />
+          Project History
+        </CardTitle>
       </CardHeader>
-      <CardContent className="p-0">
-        <ScrollArea className="h-[600px] px-6">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-electric-blue-500"></div>
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <div className="w-16 h-16 bg-electric-blue-500/10 rounded-full flex items-center justify-center mb-4">
-                <FolderOpen className="w-8 h-8 text-electric-blue-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-electric-blue-100 mb-2">No Projects Yet</h3>
-              <p className="text-electric-blue-300/80 text-center max-w-sm mb-4">
-                Start by using the AI assistant to create your first Move smart contract project.
-              </p>
-              <p className="text-electric-blue-300/60 text-sm text-center">
-                You can also drag & drop a JSON project file here to import it.
-              </p>
-            </div>
-          ) : (
+      
+      <CardContent>
+        {projects.length === 0 ? (
+          <div className="text-center py-12">
+            <FolderOpen className="w-16 h-16 text-electric-blue-400/30 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-electric-blue-200 mb-2">No Projects Yet</h3>
+            <p className="text-electric-blue-400/70 mb-6">
+              Start by asking the AI to create a smart contract, or use the Editor mode to create projects.
+            </p>
+          </div>
+        ) : (
+          <ScrollArea className="h-[600px]">
             <div className="space-y-4">
-              {projects.map((project, index) => (
-                <div key={project.id}>
-                  <div className="group p-4 rounded-lg border border-electric-blue-500/10 bg-cyber-black-300/30 hover:bg-cyber-black-300/50 hover:border-electric-blue-500/30 transition-all duration-300">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <h3 className="font-semibold text-electric-blue-100">{project.name}</h3>
-                        <Badge 
-                          variant="outline" 
-                          className={`${getStatusColor(project.status)} text-xs`}
-                        >
-                          {project.status}
-                        </Badge>
+              {projects.map((project) => (
+                <Card key={project.id} className="bg-cyber-black-300/30 border-electric-blue-500/10 hover:bg-cyber-black-300/50 transition-colors">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          {getStatusIcon(project.status)}
+                          <h3 className="font-semibold text-electric-blue-100">{project.name}</h3>
+                          <Badge className={getStatusColor(project.status)}>
+                            {project.status}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm text-electric-blue-300 mb-3">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(project.created_at).toLocaleDateString()}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="w-3 h-3" />
+                            {project.type.replace('_', ' ').toUpperCase()}
+                          </span>
+                          {project.files && (
+                            <span>{project.files.length} file(s)</span>
+                          )}
+                        </div>
+
+                        {project.contract_address && (
+                          <div className="text-xs text-green-300 mb-2">
+                            <span className="font-mono bg-cyber-black-100/30 px-2 py-1 rounded">
+                              {project.contract_address}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button 
-                          size="sm" 
-                          variant="ghost" 
-                          className="h-8 w-8 p-0 text-electric-blue-300 hover:text-electric-blue-100"
-                          onClick={() => handleExportProject(project)}
+                      
+                      <div className="flex items-center gap-2">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10"
+                              onClick={() => setSelectedProject(project)}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="bg-cyber-black-400 border-electric-blue-500/20 max-w-4xl max-h-[80vh]">
+                            <DialogHeader>
+                              <DialogTitle className="text-electric-blue-100">
+                                {selectedProject?.name}
+                              </DialogTitle>
+                            </DialogHeader>
+                            <ScrollArea className="max-h-[60vh]">
+                              {selectedProject?.files && selectedProject.files.length > 0 ? (
+                                <div className="space-y-4">
+                                  {selectedProject.files.map((file: any, index: number) => (
+                                    <div key={index} className="border border-electric-blue-500/20 rounded-lg">
+                                      <div className="bg-cyber-black-300/50 px-4 py-2 border-b border-electric-blue-500/20">
+                                        <span className="text-electric-blue-200 font-mono text-sm">
+                                          {file.name || `file_${index + 1}.move`}
+                                        </span>
+                                      </div>
+                                      <pre className="p-4 text-sm text-electric-blue-200 overflow-x-auto">
+                                        <code>{file.content || 'No content available'}</code>
+                                      </pre>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-electric-blue-400">No files available for this project.</p>
+                              )}
+                            </ScrollArea>
+                          </DialogContent>
+                        </Dialog>
+                        
+                        {project.tx_hash && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-green-500/30 text-green-300 hover:bg-green-500/10"
+                            onClick={() => window.open(`https://explorer.devnet.moved.network/tx/${project.tx_hash}`, '_blank')}
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
+                        )}
+                        
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-500/30 text-red-300 hover:bg-red-500/10"
+                          onClick={() => deleteProject(project.id)}
                         >
-                          <Download className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-electric-blue-300 hover:text-electric-blue-100">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-red-400 hover:text-red-300">
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
-                    
-                    <div className="text-sm text-electric-blue-300/80 mb-2">
-                      {project.type}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 text-xs text-electric-blue-400 mb-3">
-                      <Calendar className="w-3 h-3" />
-                      {formatDate(project.created_at)}
-                    </div>
-                    
-                    {project.files && project.files.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        {project.files.map((file, fileIndex) => (
-                          <Badge 
-                            key={fileIndex}
-                            variant="secondary" 
-                            className="text-xs bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/20"
-                          >
-                            {file}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {project.status === 'deployed' && (
-                      <div className="flex flex-col gap-2 text-xs">
-                        {project.contract_address && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-electric-blue-400">Contract:</span>
-                            <code className="text-green-300 bg-cyber-black-100/50 px-2 py-1 rounded">
-                              {project.contract_address}
-                            </code>
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-electric-blue-300">
-                              <ExternalLink className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        )}
-                        {project.tx_hash && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-electric-blue-400">TX Hash:</span>
-                            <code className="text-green-300 bg-cyber-black-100/50 px-2 py-1 rounded">
-                              {project.tx_hash}
-                            </code>
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-electric-blue-300">
-                              <ExternalLink className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  {index < projects.length - 1 && <Separator className="my-4 bg-electric-blue-500/10" />}
-                </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
-          )}
-        </ScrollArea>
+          </ScrollArea>
+        )}
       </CardContent>
     </Card>
   );

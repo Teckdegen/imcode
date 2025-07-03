@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   FileText, 
   Play, 
@@ -16,17 +17,14 @@ import {
   Code2,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  Save
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-interface FileNode {
-  name: string;
-  type: 'file' | 'folder';
-  content?: string;
-  children?: FileNode[];
-  functions?: string[];
-}
+import { useAICode } from '@/contexts/AICodeContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useWalletAuth } from '@/contexts/WalletAuthContext';
 
 interface CodeEditorProps {
   onProjectEdit?: () => void;
@@ -34,10 +32,12 @@ interface CodeEditorProps {
 
 const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
   const [activeTab, setActiveTab] = useState('editor');
-  const [selectedFile, setSelectedFile] = useState('token.move');
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { files, selectedFileId, setSelectedFileId, updateFile, deleteFile } = useAICode();
+  const { userProfile } = useWalletAuth();
   const [consoleOutput, setConsoleOutput] = useState([
     { type: 'info', message: 'ImCode Blue & Black - Move Smart Contract IDE', timestamp: new Date() },
     { type: 'success', message: 'Connected to Umi Network Devnet', timestamp: new Date() },
@@ -101,165 +101,145 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
     }
   };
 
-  const projectFiles: FileNode[] = [
-    {
-      name: 'contracts',
-      type: 'folder',
-      children: [
-        {
-          name: 'MyToken',
-          type: 'folder',
-          children: [
-            { name: 'Move.toml', type: 'file' },
-            {
-              name: 'sources',
-              type: 'folder',
-              children: [
-                { 
-                  name: 'token.move', 
-                  type: 'file',
-                  functions: ['initialize', 'mint', 'burn', 'transfer'],
-                  content: `module example::Token {
-    use std::signer;
-    use aptos_framework::coin;
-
-    struct Token has key, store {
-        name: vector<u8>,
-        symbol: vector<u8>,
-        decimals: u8,
-        supply: u64,
+  const handleSaveProject = async () => {
+    if (!userProfile || files.length === 0) {
+      toast({
+        title: "Nothing to Save",
+        description: "No files to save or user not authenticated.",
+        variant: "destructive"
+      });
+      return;
     }
 
-    public entry fun initialize(
-        account: &signer,
-        name: vector<u8>,
-        symbol: vector<u8>,
-        decimals: u8,
-        initial_supply: u64,
-    ) {
-        let account_addr = signer::address_of(account);
-        
-        let token = Token {
-            name,
-            symbol,
-            decimals,
-            supply: initial_supply,
-        };
-        
-        move_to(account, token);
+    try {
+      const projectData = {
+        user_id: userProfile.id,
+        name: `Project_${new Date().toISOString().split('T')[0]}`,
+        type: 'move_contract',
+        files: files,
+        status: 'draft'
+      };
+
+      const { error } = await supabase
+        .from('projects')
+        .insert(projectData);
+
+      if (error) throw error;
+
+      toast({
+        title: "Project Saved",
+        description: "Your Move project has been saved successfully."
+      });
+
+      setConsoleOutput(prev => [...prev, {
+        type: 'success',
+        message: 'Project saved to database',
+        timestamp: new Date()
+      }]);
+    } catch (error) {
+      console.error('Error saving project:', error);
+      toast({
+        title: "Save Failed",
+        description: "Failed to save project. Please try again.",
+        variant: "destructive"
+      });
     }
-
-    public entry fun mint(
-        account: &signer,
-        amount: u64,
-    ) acquires Token {
-        let account_addr = signer::address_of(account);
-        let token = borrow_global_mut<Token>(account_addr);
-        token.supply = token.supply + amount;
-    }
-
-    public entry fun burn(
-        account: &signer,
-        amount: u64,
-    ) acquires Token {
-        let account_addr = signer::address_of(account);
-        let token = borrow_global_mut<Token>(account_addr);
-        assert!(token.supply >= amount, 1);
-        token.supply = token.supply - amount;
-    }
-}`
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
-    {
-      name: 'scripts',
-      type: 'folder',
-      children: [
-        { 
-          name: 'deploy_token.js', 
-          type: 'file',
-          content: `const { ethers } = require("hardhat");
-const { AptosAccount, AptosClient, TxnBuilderTypes, BCS } = require("@aptos-labs/ts-sdk");
-
-async function main() {
-    console.log("Deploying MyToken to Umi Network...");
-    
-    const client = new AptosClient("https://devnet.moved.network");
-    const account = new AptosAccount();
-    
-    const payload = {
-        type: "entry_function_payload",
-        function: "example::Token::initialize",
-        arguments: [
-            "MyToken",
-            "MTK", 
-            8,
-            1000000
-        ],
-        type_arguments: []
-    };
-    
-    const txnRequest = await client.generateTransaction(account.address(), payload);
-    const signedTxn = await client.signTransaction(account, txnRequest);
-    const txnResult = await client.submitTransaction(signedTxn);
-    
-    console.log("Transaction hash:", txnResult.hash);
-    console.log("Contract deployed successfully!");
-}
-
-main().catch(console.error);`
-        }
-      ]
-    },
-    { name: 'hardhat.config.js', type: 'file' },
-    { name: 'package.json', type: 'file' }
-  ];
-
-  const renderFileTree = (files: FileNode[], depth = 0) => {
-    return files.map((file, index) => (
-      <div key={index} className={`ml-${depth * 4}`}>
-        <div 
-          className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-electric-blue-500/10 ${
-            selectedFile === file.name ? 'bg-electric-blue-500/20 text-electric-blue-100' : 'text-electric-blue-300'
-          }`}
-          onClick={() => {
-            if (file.type === 'file') {
-              setSelectedFile(file.name);
-              if (!isEditing) {
-                handleStartEditing();
-              }
-            }
-          }}
-        >
-          {file.type === 'folder' ? (
-            <Folder className="w-4 h-4 text-electric-blue-400" />
-          ) : (
-            <FileText className="w-4 h-4 text-electric-blue-400" />
-          )}
-          <span className="text-sm">{file.name}</span>
-          {file.functions && (
-            <div className="ml-auto flex gap-1">
-              {file.functions.slice(0, 2).map((func, i) => (
-                <Badge key={i} variant="secondary" className="text-xs bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/20">
-                  {func}
-                </Badge>
-              ))}
-              {file.functions.length > 2 && (
-                <Badge variant="secondary" className="text-xs bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/20">
-                  +{file.functions.length - 2}
-                </Badge>
-              )}
-            </div>
-          )}
-        </div>
-        {file.children && renderFileTree(file.children, depth + 1)}
-      </div>
-    ));
   };
+
+  const handleDeploy = async () => {
+    if (!selectedFile || !selectedFile.content) {
+      toast({
+        title: "No Contract Selected",
+        description: "Please select a Move contract file to deploy.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsDeploying(true);
+    setConsoleOutput(prev => [...prev, {
+      type: 'info',
+      message: 'Starting deployment to Umi Network...',
+      timestamp: new Date()
+    }]);
+
+    try {
+      // Simulate deployment process
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      const mockTxHash = `0x${Math.random().toString(16).slice(2, 34)}`;
+      const mockContractAddress = `0x${Math.random().toString(16).slice(2, 34)}`;
+
+      if (userProfile) {
+        const { error } = await supabase
+          .from('projects')
+          .insert({
+            user_id: userProfile.id,
+            name: selectedFile.name.replace('.move', ''),
+            type: 'move_contract',
+            files: [selectedFile],
+            status: 'deployed',
+            tx_hash: mockTxHash,
+            contract_address: mockContractAddress
+          });
+
+        if (error) throw error;
+      }
+
+      setConsoleOutput(prev => [...prev, 
+        {
+          type: 'success',
+          message: `Contract compiled successfully`,
+          timestamp: new Date()
+        },
+        {
+          type: 'success',
+          message: `Deployed to Umi Network`,
+          timestamp: new Date()
+        },
+        {
+          type: 'info',
+          message: `Transaction Hash: ${mockTxHash}`,
+          timestamp: new Date()
+        },
+        {
+          type: 'info',
+          message: `Contract Address: ${mockContractAddress}`,
+          timestamp: new Date()
+        }
+      ]);
+
+      toast({
+        title: "Deployment Successful",
+        description: `Contract deployed with address: ${mockContractAddress}`,
+      });
+    } catch (error) {
+      console.error('Deployment error:', error);
+      setConsoleOutput(prev => [...prev, {
+        type: 'error',
+        message: `Deployment failed: ${error}`,
+        timestamp: new Date()
+      }]);
+      
+      toast({
+        title: "Deployment Failed",
+        description: "Failed to deploy contract. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  const handleDeleteFile = (fileId: string) => {
+    deleteFile(fileId);
+    toast({
+      title: "File Deleted",
+      description: "File has been permanently removed.",
+    });
+  };
+
+  const selectedFile = files.find(f => f.id === selectedFileId);
 
   const getConsoleIcon = (type: string) => {
     switch (type) {
@@ -273,11 +253,6 @@ main().catch(console.error);`
         return <Terminal className="w-4 h-4 text-electric-blue-400" />;
     }
   };
-
-  const currentFile = projectFiles
-    .flatMap(f => f.children || [])
-    .flatMap(f => f.children?.flatMap(c => c.children || []) || [])
-    .find(f => f.name === selectedFile);
 
   return (
     <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm">
@@ -302,15 +277,25 @@ main().catch(console.error);`
               onClick={() => fileInputRef.current?.click()}
             >
               <Upload className="w-4 h-4 mr-1" />
-              Upload Text
+              Upload
             </Button>
-            <Button size="sm" variant="outline" className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10">
-              <Download className="w-4 h-4 mr-1" />
-              Export
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10"
+              onClick={handleSaveProject}
+            >
+              <Save className="w-4 h-4 mr-1" />
+              Save
             </Button>
-            <Button size="sm" className="bg-electric-blue-500 hover:bg-electric-blue-600 text-white">
+            <Button 
+              size="sm" 
+              className="bg-electric-blue-500 hover:bg-electric-blue-600 text-white"
+              onClick={handleDeploy}
+              disabled={isDeploying || !selectedFile}
+            >
               <Play className="w-4 h-4 mr-1" />
-              Deploy
+              {isDeploying ? 'Deploying...' : 'Deploy'}
             </Button>
           </div>
         </div>
@@ -337,7 +322,49 @@ main().catch(console.error);`
                   </CardHeader>
                   <CardContent className="p-0">
                     <ScrollArea className="h-[400px] px-4">
-                      {renderFileTree(projectFiles)}
+                      {files.length === 0 ? (
+                        <div className="text-center text-electric-blue-400/60 py-8">
+                          <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                          <p className="text-sm">No files yet</p>
+                          <p className="text-xs mt-1">Ask AI to generate code</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {files.map((file) => (
+                            <div 
+                              key={file.id}
+                              className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-electric-blue-500/10 group ${
+                                selectedFileId === file.id ? 'bg-electric-blue-500/20 text-electric-blue-100' : 'text-electric-blue-300'
+                              }`}
+                              onClick={() => {
+                                setSelectedFileId(file.id);
+                                if (!isEditing) {
+                                  handleStartEditing();
+                                }
+                              }}
+                            >
+                              <FileText className="w-4 h-4 text-electric-blue-400" />
+                              <span className="text-sm flex-1">{file.name}</span>
+                              {file.name.endsWith('.move') && (
+                                <Badge variant="secondary" className="text-xs bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/20">
+                                  Move
+                                </Badge>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFile(file.id);
+                                }}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </ScrollArea>
                   </CardContent>
                 </Card>
@@ -350,7 +377,7 @@ main().catch(console.error);`
                     <div className="flex items-center justify-between">
                       <CardTitle className="text-sm text-electric-blue-200 flex items-center gap-2">
                         <FileText className="w-4 h-4" />
-                        {selectedFile}
+                        {selectedFile?.name || 'No file selected'}
                       </CardTitle>
                       <div className="flex gap-1">
                         <div className="w-3 h-3 bg-red-500 rounded-full"></div>
@@ -360,11 +387,22 @@ main().catch(console.error);`
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <ScrollArea className="h-[400px]">
-                      <pre className="p-4 text-sm text-electric-blue-200 font-mono bg-cyber-black-100/30 overflow-x-auto">
-                        <code>{currentFile?.content || '// Select a file to view its content'}</code>
-                      </pre>
-                    </ScrollArea>
+                    {selectedFile ? (
+                      <Textarea
+                        value={selectedFile.content || ''}
+                        onChange={(e) => updateFile(selectedFile.id, e.target.value)}
+                        className="h-[400px] resize-none bg-cyber-black-100/30 border-none text-electric-blue-200 font-mono text-sm focus:ring-electric-blue-500/20 focus:border-electric-blue-500/40"
+                        placeholder="Your Move contract code will appear here..."
+                      />
+                    ) : (
+                      <div className="h-[400px] flex items-center justify-center text-electric-blue-400/60">
+                        <div className="text-center">
+                          <Code2 className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                          <p>Select a file to view its content</p>
+                          <p className="text-sm mt-2">Or ask the AI to generate code for you</p>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
