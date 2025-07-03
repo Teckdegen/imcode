@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -75,7 +74,7 @@ const ProjectHistory = () => {
         created_at: item.created_at || '',
         tx_hash: item.tx_hash || undefined,
         contract_address: item.contract_address || undefined,
-        files: Array.isArray(item.files) ? item.files as ProjectFile[] : []
+        files: Array.isArray(item.files) ? (item.files as unknown as ProjectFile[]) : []
       }));
 
       setProjects(convertedProjects);
