@@ -42,7 +42,9 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
         type: 'assistant',
         content: `Welcome to ImCode Blue & Black! I'm your AI assistant specialized in Move smart contract development for the Umi Network. I can help you create tokens, NFTs, DeFi protocols, governance systems, and more. You have ${messagesRemaining} questions remaining in this session.
 
-When I generate code, it will automatically be added to your editor with files created for you. Start by telling me what kind of smart contract you'd like to create!`,
+When I generate code, I'll automatically create multiple organized files in your editor - never just one big file! Each contract will be broken down into logical components like main logic, configuration, events, utilities, and tests.
+
+Start by telling me what kind of smart contract you'd like to create!`,
       });
     }
   }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading, addMessage]);
@@ -59,6 +61,45 @@ When I generate code, it will automatically be added to your editor with files c
     }
     
     return codeBlocks;
+  };
+
+  const generateFileName = (code: string, language: string, index: number) => {
+    // Try to extract module name from code
+    const moduleMatch = code.match(/module\s+[\w:]+::(\w+)/);
+    if (moduleMatch && language === 'move') {
+      return `${moduleMatch[1]}.move`;
+    }
+
+    // Look for common patterns to generate meaningful names
+    if (code.includes('struct Token') || code.includes('token')) {
+      return `token_${index + 1}.move`;
+    }
+    if (code.includes('struct NFT') || code.includes('nft')) {
+      return `nft_${index + 1}.move`;
+    }
+    if (code.includes('liquidity') || code.includes('pool')) {
+      return `pool_${index + 1}.move`;
+    }
+    if (code.includes('event') || code.includes('Event')) {
+      return `events_${index + 1}.move`;
+    }
+    if (code.includes('config') || code.includes('Config')) {
+      return `config_${index + 1}.move`;
+    }
+    if (code.includes('test') || code.includes('Test')) {
+      return `tests_${index + 1}.move`;
+    }
+    if (code.includes('admin') || code.includes('Admin')) {
+      return `admin_${index + 1}.move`;
+    }
+    if (code.includes('utils') || code.includes('helper')) {
+      return `utils_${index + 1}.move`;
+    }
+
+    // Default fallback
+    return language === 'move' 
+      ? `contract_${index + 1}.move`
+      : `file_${index + 1}.${language}`;
   };
 
   const handleSendMessage = async () => {
@@ -105,10 +146,7 @@ When I generate code, it will automatically be added to your editor with files c
       // Add files to editor if code blocks are found
       if (codeBlocks.length > 0) {
         codeBlocks.forEach((block, index) => {
-          const fileName = block.language === 'move' 
-            ? `contract_${Date.now()}_${index}.move`
-            : `file_${Date.now()}_${index}.${block.language}`;
-          
+          const fileName = generateFileName(block.code, block.language, index);
           addFileFromAI(fileName, block.code, block.language);
         });
 

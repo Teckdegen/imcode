@@ -19,6 +19,15 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
+import type { Json } from '@/integrations/supabase/types';
+
+interface ProjectFile {
+  id: string;
+  name: string;
+  type: string;
+  content: string;
+  parentId?: string;
+}
 
 interface Project {
   id: string;
@@ -28,7 +37,7 @@ interface Project {
   created_at: string;
   tx_hash?: string;
   contract_address?: string;
-  files?: any[];
+  files?: ProjectFile[];
 }
 
 const ProjectHistory = () => {
@@ -57,7 +66,19 @@ const ProjectHistory = () => {
 
       if (error) throw error;
 
-      setProjects(data || []);
+      // Convert the data to match our Project interface
+      const convertedProjects: Project[] = (data || []).map(item => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        status: item.status,
+        created_at: item.created_at || '',
+        tx_hash: item.tx_hash || undefined,
+        contract_address: item.contract_address || undefined,
+        files: Array.isArray(item.files) ? item.files as ProjectFile[] : []
+      }));
+
+      setProjects(convertedProjects);
     } catch (error) {
       console.error('Error loading projects:', error);
       toast({
@@ -208,7 +229,7 @@ const ProjectHistory = () => {
                             <ScrollArea className="max-h-[60vh]">
                               {selectedProject?.files && selectedProject.files.length > 0 ? (
                                 <div className="space-y-4">
-                                  {selectedProject.files.map((file: any, index: number) => (
+                                  {selectedProject.files.map((file: ProjectFile, index: number) => (
                                     <div key={index} className="border border-electric-blue-500/20 rounded-lg">
                                       <div className="bg-cyber-black-300/50 px-4 py-2 border-b border-electric-blue-500/20">
                                         <span className="text-electric-blue-200 font-mono text-sm">

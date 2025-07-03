@@ -1,5 +1,5 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useWalletAuth } from './WalletAuthContext';
 
@@ -75,11 +75,21 @@ export const ChatHistoryProvider: React.FC<ChatHistoryProviderProps> = ({ childr
     if (!userProfile || messages.length === 0) return;
 
     try {
+      // Convert messages to plain objects to ensure JSON compatibility
+      const messagesJson = messages.map(msg => ({
+        id: msg.id,
+        type: msg.type,
+        content: msg.content,
+        timestamp: msg.timestamp.toISOString(),
+        codeGenerated: msg.codeGenerated,
+        fileName: msg.fileName
+      }));
+
       const { error } = await supabase
         .from('chat_sessions')
         .upsert({
           user_id: userProfile.id,
-          messages: messages,
+          messages: messagesJson,
           updated_at: new Date().toISOString()
         });
 
