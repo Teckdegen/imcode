@@ -7,6 +7,7 @@ interface FileItem {
   type: 'file' | 'folder';
   content?: string;
   parentId?: string;
+  displayName?: string; // Add displayName property to fix TypeScript errors
 }
 
 interface AICodeContextType {
@@ -38,8 +39,11 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   const [selectedFileId, setSelectedFileId] = useState<string>('');
 
   const addFileFromAI = useCallback((fileName: string, content: string, type: string = 'move') => {
+    // Generate a unique ID based on filename and timestamp to ensure uniqueness
+    const uniqueId = `${fileName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     const newFile: FileItem = {
-      id: Date.now().toString(),
+      id: uniqueId,
       name: fileName,
       type: 'file',
       content: content,
@@ -57,6 +61,7 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   }, []);
 
   const deleteFile = useCallback((fileId: string) => {
+    // Only delete the specific file with the matching ID, not files with similar content
     setFiles(prev => prev.filter(file => file.id !== fileId));
     if (selectedFileId === fileId) {
       setSelectedFileId('');

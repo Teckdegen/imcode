@@ -34,6 +34,15 @@ interface CodeEditorProps {
   onProjectEdit?: () => void;
 }
 
+interface FileWithDisplayName {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  content?: string;
+  parentId?: string;
+  displayName: string;
+}
+
 const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
   const [activeTab, setActiveTab] = useState('editor');
   const [isEditing, setIsEditing] = useState(false);
@@ -51,29 +60,28 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
     { type: 'info', message: 'Ready to compile and deploy Move contracts', timestamp: new Date() }
   ]);
 
-  // Group files by folder structure
+  // Group files by folder structure with proper typing
   const organizeFilesByFolder = () => {
-    const folderStructure: { [key: string]: typeof files } = {};
+    const folderStructure: { [key: string]: FileWithDisplayName[] } = {};
     
     files.forEach(file => {
       const pathParts = file.name.split('/');
+      const fileWithDisplayName: FileWithDisplayName = {
+        ...file,
+        displayName: pathParts.length > 1 ? pathParts.slice(1).join('/') : file.name
+      };
+      
       if (pathParts.length > 1) {
         const folder = pathParts[0];
         if (!folderStructure[folder]) {
           folderStructure[folder] = [];
         }
-        folderStructure[folder].push({
-          ...file,
-          displayName: pathParts.slice(1).join('/')
-        });
+        folderStructure[folder].push(fileWithDisplayName);
       } else {
         if (!folderStructure['root']) {
           folderStructure['root'] = [];
         }
-        folderStructure['root'].push({
-          ...file,
-          displayName: file.name
-        });
+        folderStructure['root'].push(fileWithDisplayName);
       }
     });
     
@@ -499,8 +507,8 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
                                         }
                                       }}
                                     >
-                                      <span className="text-sm">{getFileIcon(file.displayName || file.name)}</span>
-                                      <span className="text-sm flex-1">{file.displayName || file.name}</span>
+                                      <span className="text-sm">{getFileIcon(file.displayName)}</span>
+                                      <span className="text-sm flex-1">{file.displayName}</span>
                                       {getLanguageBadge(file.name)}
                                       <Button
                                         size="sm"
