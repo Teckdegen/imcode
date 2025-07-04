@@ -93,7 +93,7 @@ ALWAYS include these essential files with COMPLETE implementations:
 
 Example of COMPREHENSIVE code generation (always aim for this level of detail):
 
-```typescript
+\`\`\`typescript
 // Complete interface definitions
 interface TokenConfig {
   name: string;
@@ -163,7 +163,7 @@ class TokenManager {
 
   // Additional comprehensive methods...
 }
-```
+\`\`\`
 
 7. ALWAYS PROVIDE MULTIPLE FILES: Never create just one file. Always create a complete project structure with 5-15 files minimum.
 

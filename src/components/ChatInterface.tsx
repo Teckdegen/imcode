@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2, Code, FileText, Edit } from 'lucide-react';
+import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2, Code, FileText, Edit, RefreshCw } from 'lucide-react';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
 import { useChatHistory } from '@/contexts/ChatHistoryContext';
 import { useAICode } from '@/contexts/AICodeContext';
@@ -22,7 +22,15 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   const { isConnected } = useAccount();
   const { userProfile, messagesRemaining, canSendMessage, incrementMessageCount, isLoading } = useWalletAuth();
   const { messages, addMessage } = useChatHistory();
-  const { files, addFileFromAI, updateFile } = useAICode();
+  const { 
+    files, 
+    addFileFromAI, 
+    updateFile, 
+    editFileByName, 
+    findFileByName,
+    preventDuplicateFiles,
+    getUniqueFileName 
+  } = useAICode();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -35,27 +43,50 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   }, [messages]);
 
   useEffect(() => {
-    // Load initial welcome message when wallet is connected and profile is loaded
+    // Load enhanced welcome message when wallet is connected
     if (isConnected && userProfile && !isLoading && messages.length === 0) {
       addMessage({
         type: 'assistant',
-        content: `Welcome to ImCode Blue & Black! I'm your AI assistant specialized in Move smart contract development for the Umi Network. I can help you create tokens, NFTs, DeFi protocols, governance systems, and more. You have ${messagesRemaining} questions remaining in this session.
+        content: `🚀 Welcome to ImCode Blue & Black AI Assistant! I'm your specialized Move smart contract development companion for the Umi Network.
 
-When I generate code, I'll automatically create a complete project structure with multiple organized files and folders - including hardhat.config.js, deploy.js, package.json, and proper folder organization like contracts/, scripts/, tests/, config/, and utils/.
+✨ **ENHANCED CAPABILITIES:**
 
-Each project will be broken down into logical components with proper configuration files for deployment to Umi Network. All generated code will appear directly in the code editor with syntax highlighting.
+🔧 **Advanced File Management:**
+• **Edit specific files**: Use commands like "edit Token.move" or "modify deploy.js"
+• **File referencing**: Use @filename (e.g., "@Token.move") to reference existing files in your messages
+• **Duplicate prevention**: I automatically prevent creating files with identical names
+• **Smart organization**: Files are auto-organized into proper folder structures
 
-Start by telling me what kind of smart contract project you'd like to create!`,
+📁 **Comprehensive Project Generation:**
+• **Complete project structures** with 5-15+ files including contracts/, scripts/, tests/, config/, utils/, types/
+• **Production-ready code** with extensive error handling, validation, and documentation
+• **Multiple file types**: .move contracts, .js/.ts scripts, .json configs, .toml files, README.md docs
+
+🎯 **Smart File Operations:**
+• **Intelligent file finding**: I can locate files by partial names, paths, or content
+• **Content-aware organization**: Files placed in appropriate directories based on their purpose
+• **Version-safe editing**: Existing functionality preserved when modifying files
+
+💡 **Usage Examples:**
+• "Create a comprehensive DeFi liquidity pool project"
+• "Edit Token.move and add burn functionality"
+• "Look at @deploy.js and create a similar script for NFT deployment"
+• "Modify the governance contract in @contracts/governance/"
+
+You have **${messagesRemaining} questions** remaining in this session. Each interaction generates complete, enterprise-level code structures!
+
+What kind of Move smart contract project would you like to create or modify today?`,
       });
     }
   }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading, addMessage]);
 
+  // Enhanced command detection with more patterns
   const detectEditCommand = (message: string) => {
     const editPatterns = [
-      /edit\s+([^\s]+)/i,
-      /modify\s+([^\s]+)/i,
-      /update\s+([^\s]+)/i,
-      /change\s+([^\s]+)/i
+      /(?:edit|modify|update|change)\s+([^\s]+)/i,
+      /(?:fix|repair|adjust)\s+([^\s]+)/i,
+      /(?:add\s+to|append\s+to|extend)\s+([^\s]+)/i,
+      /(?:refactor|improve)\s+([^\s]+)/i
     ];
     
     for (const pattern of editPatterns) {
@@ -67,31 +98,10 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     return null;
   };
 
-  const findFileByName = (fileName: string) => {
-    return files.find(file => 
-      file.name === fileName || 
-      file.name.endsWith(`/${fileName}`) ||
-      file.name.includes(fileName)
-    );
-  };
-
-  const generateUniqueFileName = (baseName: string): string => {
-    const existingNames = files.map(f => f.name);
-    if (!existingNames.includes(baseName)) {
-      return baseName;
-    }
-
-    let counter = 1;
-    let uniqueName = baseName;
-    const nameWithoutExt = baseName.replace(/\.[^/.]+$/, "");
-    const extension = baseName.match(/\.[^/.]+$/)?.[0] || '';
-
-    while (existingNames.includes(uniqueName)) {
-      uniqueName = `${nameWithoutExt}_${counter}${extension}`;
-      counter++;
-    }
-
-    return uniqueName;
+  // Enhanced file reference detection
+  const detectFileReferences = (message: string) => {
+    const fileRefs = message.match(/@[\w\-\.\/]+/g) || [];
+    return fileRefs.map(ref => ref.substring(1)); // Remove @ symbol
   };
 
   const extractCodeFromResponse = (response: string) => {
@@ -112,77 +122,78 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     return text.replace(/```(\w+)?\n[\s\S]*?```/g, '').trim();
   };
 
+  // Enhanced file name generation with better categorization
   const generateFileName = (code: string, language: string, index: number) => {
-    // Enhanced file naming with folder structure support
+    const lowerCode = code.toLowerCase();
     
     // Configuration files
-    if (code.includes('module.exports') && code.includes('hardhat')) {
-      return generateUniqueFileName('hardhat.config.js');
+    if (code.includes('module.exports') && lowerCode.includes('hardhat')) {
+      return getUniqueFileName('hardhat.config.js');
     }
-    if (code.includes('hardhat run') && code.includes('deploy')) {
-      return generateUniqueFileName('deploy.js');
+    if (lowerCode.includes('hardhat run') && lowerCode.includes('deploy')) {
+      return getUniqueFileName('scripts/deploy.js');
     }
     if (code.includes('"scripts"') && code.includes('"hardhat"')) {
-      return generateUniqueFileName('package.json');
+      return getUniqueFileName('package.json');
     }
     if (code.includes('[dependencies]') || code.includes('[package]')) {
-      return generateUniqueFileName('config/Move.toml');
+      return getUniqueFileName('config/Move.toml');
     }
 
-    // Contract files with folder structure
-    if (language === 'move' || code.includes('module')) {
-      if (code.includes('struct Token') || code.includes('token')) {
-        return generateUniqueFileName(`contracts/Token.move`);
+    // Smart Move contract naming
+    if (language === 'move' || lowerCode.includes('module')) {
+      if (lowerCode.includes('struct token') || lowerCode.includes('token_')) {
+        if (lowerCode.includes('erc20') || lowerCode.includes('fungible')) {
+          return getUniqueFileName('contracts/tokens/FungibleToken.move');
+        }
+        return getUniqueFileName('contracts/tokens/Token.move');
       }
-      if (code.includes('struct NFT') || code.includes('nft')) {
-        return generateUniqueFileName(`contracts/NFT.move`);
+      if (lowerCode.includes('struct nft') || lowerCode.includes('nft_')) {
+        return getUniqueFileName('contracts/nft/NFTCollection.move');
       }
-      if (code.includes('liquidity') || code.includes('pool')) {
-        return generateUniqueFileName(`contracts/pools/LiquidityPool.move`);
+      if (lowerCode.includes('liquidity') || lowerCode.includes('pool') || lowerCode.includes('defi')) {
+        return getUniqueFileName('contracts/defi/LiquidityPool.move');
       }
-      if (code.includes('event') || code.includes('Event')) {
-        return generateUniqueFileName(`contracts/TokenEvents.move`);
+      if (lowerCode.includes('governance') || lowerCode.includes('dao') || lowerCode.includes('proposal')) {
+        return getUniqueFileName('contracts/governance/DAO.move');
       }
-      if (code.includes('config') || code.includes('Config')) {
-        return generateUniqueFileName(`contracts/TokenConfig.move`);
+      if (lowerCode.includes('event') || lowerCode.includes('emit')) {
+        return getUniqueFileName('contracts/events/TokenEvents.move');
       }
+      if (lowerCode.includes('config') || lowerCode.includes('admin')) {
+        return getUniqueFileName('contracts/admin/AdminConfig.move');
+      }
+      return getUniqueFileName(`contracts/Contract_${index + 1}.move`);
     }
 
     // Test files
-    if (code.includes('test') || code.includes('Test') || code.includes('#[test]')) {
-      return generateUniqueFileName(`tests/${language === 'move' ? 'token_tests.move' : `test_${index + 1}.${language}`}`);
+    if (lowerCode.includes('test') || lowerCode.includes('#[test]') || language === 'test') {
+      return getUniqueFileName(`tests/test_${index + 1}.${language === 'move' ? 'move' : 'js'}`);
     }
 
-    // Script files
-    if (language === 'javascript' || language === 'js') {
-      if (code.includes('deploy') || code.includes('Deploy')) {
-        return generateUniqueFileName(`scripts/deploy.js`);
+    // Script categorization
+    if (language === 'javascript' || language === 'js' || language === 'typescript' || language === 'ts') {
+      if (lowerCode.includes('deploy') || lowerCode.includes('deployment')) {
+        return getUniqueFileName('scripts/deployment/deploy.js');
       }
-      if (code.includes('interact') || code.includes('Interact')) {
-        return generateUniqueFileName(`scripts/interact.js`);
+      if (lowerCode.includes('interact') || lowerCode.includes('interaction')) {
+        return getUniqueFileName('scripts/interaction/interact.js');
       }
-      return generateUniqueFileName(`scripts/script_${index + 1}.js`);
+      if (lowerCode.includes('mint') || lowerCode.includes('transfer')) {
+        return getUniqueFileName('scripts/interaction/tokenActions.js');
+      }
+      return getUniqueFileName(`scripts/script_${index + 1}.js`);
     }
 
-    // Utils and helpers
-    if (code.includes('utils') || code.includes('helper') || code.includes('Helper')) {
-      return generateUniqueFileName(`utils/helpers.move`);
-    }
-    if (code.includes('const') && (code.includes('ADDRESS') || code.includes('CONSTANT'))) {
-      return generateUniqueFileName(`utils/constants.move`);
-    }
-
-    // Admin and governance
-    if (code.includes('admin') || code.includes('Admin') || code.includes('governance')) {
-      return generateUniqueFileName(`contracts/governance/Admin.move`);
+    // Documentation
+    if (language === 'markdown' || language === 'md') {
+      if (lowerCode.includes('readme') || lowerCode.includes('# ')) {
+        return getUniqueFileName('README.md');
+      }
+      return getUniqueFileName(`docs/documentation_${index + 1}.md`);
     }
 
-    // Default fallback with folders
-    if (language === 'move') {
-      return generateUniqueFileName(`contracts/Contract_${index + 1}.move`);
-    }
-    
-    return generateUniqueFileName(`${language === 'javascript' ? 'scripts' : 'contracts'}/file_${index + 1}.${language || 'move'}`);
+    return getUniqueFileName(`${language || 'misc'}/file_${index + 1}.${language || 'txt'}`);
   };
 
   const handleSendMessage = async () => {
@@ -197,8 +208,9 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     setInputValue('');
     setIsSending(true);
 
-    // Check if this is an edit command
+    // Enhanced command detection
     const editFileName = detectEditCommand(currentInput);
+    const fileReferences = detectFileReferences(currentInput);
     let targetFile = null;
     
     if (editFileName) {
@@ -206,7 +218,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
       if (!targetFile) {
         toast({
           title: "File Not Found",
-          description: `Could not find file: ${editFileName}`,
+          description: `Could not find file: ${editFileName}. Available files: ${files.map(f => f.name).join(', ')}`,
           variant: "destructive"
         });
         setIsSending(false);
@@ -214,27 +226,45 @@ Start by telling me what kind of smart contract project you'd like to create!`,
       }
     }
 
-    // Trigger the AI interaction callback
+    // Validate file references
+    const invalidRefs = fileReferences.filter(ref => !findFileByName(ref));
+    if (invalidRefs.length > 0) {
+      toast({
+        title: "Referenced Files Not Found",
+        description: `Cannot find: ${invalidRefs.join(', ')}. Available files: ${files.map(f => f.name).join(', ')}`,
+        variant: "destructive"
+      });
+    }
+
+    // Trigger AI interaction callback
     if (onAIInteraction) {
       onAIInteraction();
     }
 
     try {
-      // Increment message count first
+      // Increment message count
       await incrementMessageCount();
 
-      // Prepare file context for AI
+      // Prepare comprehensive file context
       const fileContext = files.map(file => ({
         name: file.name,
         content: file.content || '',
-        type: file.type
+        type: file.type,
+        size: (file.content || '').length
       }));
 
-      // Call AI function with file context
+      console.log('Sending message with enhanced context:', {
+        message: currentInput,
+        editTarget: editFileName,
+        references: fileReferences,
+        availableFiles: files.length
+      });
+
+      // Call AI function with enhanced context
       const { data, error } = await supabase.functions.invoke('ai-chat', {
         body: {
           message: currentInput,
-          context: messages.slice(-4).map(msg => ({
+          context: messages.slice(-6).map(msg => ({
             role: msg.type === 'user' ? 'user' : 'assistant',
             content: msg.content
           })),
@@ -248,21 +278,23 @@ Start by telling me what kind of smart contract project you'd like to create!`,
 
       const aiResponse = data.response;
       
-      // Extract code blocks from the response
+      // Extract and process code blocks
       const codeBlocks = extractCodeFromResponse(aiResponse);
       
-      // Handle file editing vs creation
+      let operationSummary = '';
+      
       if (codeBlocks.length > 0) {
         if (editFileName && targetFile) {
-          // Edit existing file
+          // File editing mode
           if (codeBlocks.length === 1) {
             updateFile(targetFile.id, codeBlocks[0].code);
+            operationSummary = `Updated: ${targetFile.name}`;
             toast({
-              title: "File Updated",
-              description: `${targetFile.name} has been successfully modified`,
+              title: "File Updated Successfully",
+              description: `${targetFile.name} has been modified with new functionality`,
             });
           } else {
-            // Multiple code blocks - update first and create others
+            // Update target + create additional files
             updateFile(targetFile.id, codeBlocks[0].code);
             
             codeBlocks.slice(1).forEach((block, index) => {
@@ -270,44 +302,42 @@ Start by telling me what kind of smart contract project you'd like to create!`,
               addFileFromAI(fileName, block.code, block.language);
             });
 
+            operationSummary = `Updated: ${targetFile.name} + ${codeBlocks.length - 1} new files`;
             toast({
-              title: "Files Updated",
-              description: `${targetFile.name} updated and ${codeBlocks.length - 1} new file(s) created`,
+              title: "Files Updated & Created",
+              description: `Modified ${targetFile.name} and created ${codeBlocks.length - 1} additional files`,
             });
           }
         } else {
-          // Create new files
+          // Project generation mode
           codeBlocks.forEach((block, index) => {
             const fileName = generateFileName(block.code, block.language, index);
             addFileFromAI(fileName, block.code, block.language);
           });
 
+          operationSummary = `Complete project: ${codeBlocks.length} files`;
           toast({
-            title: "Project Structure Generated",
-            description: `${codeBlocks.length} file(s) with proper folder structure have been added to your editor`,
+            title: "Comprehensive Project Generated",
+            description: `Created ${codeBlocks.length} files with professional folder structure and extensive functionality`,
           });
         }
       }
 
-      // Remove code blocks from chat message and add clean response
+      // Add clean response to chat
       const cleanResponse = removeCodeBlocksFromText(aiResponse);
       
       addMessage({
         type: 'assistant',
         content: cleanResponse,
         codeGenerated: codeBlocks.length > 0,
-        fileName: editFileName && targetFile 
-          ? `Updated: ${targetFile.name}` 
-          : codeBlocks.length > 0 
-            ? `Complete project with ${codeBlocks.length} file(s)` 
-            : undefined
+        fileName: operationSummary || undefined
       });
 
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
-        title: "Error",
-        description: "Failed to send message. Please try again.",
+        title: "Communication Error",
+        description: "Failed to process your request. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -343,7 +373,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
                 Connect Your Wallet
               </h3>
               <p className="text-electric-blue-300/80 mb-6 max-w-sm">
-                Connect your wallet to start chatting with the AI assistant and access all features of ImCode Blue & Black.
+                Connect your wallet to access the enhanced AI assistant with advanced file management capabilities.
               </p>
               <ConnectButton />
             </div>
@@ -353,7 +383,6 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     );
   }
 
-  // Show loading state while profile is being fetched
   if (isLoading) {
     return (
       <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm flex flex-col">
@@ -364,10 +393,10 @@ Start by telling me what kind of smart contract project you'd like to create!`,
             </div>
             <div>
               <h3 className="text-xl font-semibold text-electric-blue-100 mb-2">
-                Loading Your Profile
+                Loading Enhanced AI Assistant
               </h3>
               <p className="text-electric-blue-300/80">
-                Setting up your AI assistant session...
+                Setting up advanced file management and comprehensive code generation...
               </p>
             </div>
           </div>
@@ -382,7 +411,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
         <div className="flex items-center justify-between">
           <CardTitle className="text-electric-blue-100 flex items-center gap-2">
             <MessageCircle className="w-5 h-5" />
-            AI Assistant
+            Enhanced AI Assistant
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge 
@@ -400,8 +429,19 @@ Start by telling me what kind of smart contract project you'd like to create!`,
             </Badge>
           </div>
         </div>
-        <div className="mt-2 p-2 bg-electric-blue-500/10 border border-electric-blue-500/20 rounded text-xs text-electric-blue-300">
-          💡 <strong>Enhanced Features:</strong> Use "edit filename.move" to modify existing files, or "@filename" to reference files in your message
+        <div className="mt-2 p-3 bg-gradient-to-r from-electric-blue-500/10 to-green-500/10 border border-electric-blue-500/20 rounded-lg">
+          <div className="text-xs text-electric-blue-300 space-y-1">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-3 h-3" />
+              <strong>Advanced Features:</strong>
+            </div>
+            <div className="ml-5 space-y-1">
+              <div>• <strong>File Editing:</strong> "edit filename.ext" to modify existing files</div>
+              <div>• <strong>File References:</strong> "@filename" to reference files in your message</div>
+              <div>• <strong>Smart Organization:</strong> Auto-organized folder structures</div>
+              <div>• <strong>Comprehensive Projects:</strong> 5-15+ files with full implementations</div>
+            </div>
+          </div>
         </div>
       </CardHeader>
       
@@ -431,7 +471,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
                         {message.codeGenerated && (
                           <div className="flex items-center gap-1 text-xs text-green-400">
                             {message.fileName?.includes('Updated:') ? <Edit className="w-3 h-3" /> : <Code className="w-3 h-3" />}
-                            <span>{message.fileName?.includes('Updated:') ? 'File edited' : 'Code added'}</span>
+                            <span>{message.fileName?.includes('Updated:') ? 'Modified' : 'Generated'}</span>
                           </div>
                         )}
                       </div>
@@ -481,7 +521,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Create comprehensive projects, edit specific files (e.g., 'edit Token.move'), or reference files with @filename..."
+                placeholder="Create comprehensive projects, edit files (e.g., 'edit Token.move'), reference files (@filename), or ask for specific modifications..."
                 className="flex-1 bg-cyber-black-300/50 border-electric-blue-500/20 text-electric-blue-100 placeholder:text-electric-blue-400/60 focus:border-electric-blue-500/40 focus:ring-electric-blue-500/20"
                 disabled={isSending}
               />
