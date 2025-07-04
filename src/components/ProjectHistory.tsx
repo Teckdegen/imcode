@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -49,6 +48,57 @@ const ProjectHistory = () => {
   const { toast } = useToast();
   const { userProfile } = useWalletAuth();
 
+  const parseProjectFiles = (files: Json): ProjectFile[] => {
+    if (!files) return [];
+    
+    try {
+      // Handle both array and object formats
+      if (Array.isArray(files)) {
+        return files.map((file, index) => {
+          if (typeof file === 'object' && file !== null) {
+            const fileObj = file as Record<string, unknown>;
+            return {
+              id: (fileObj.id as string) || `file_${index}`,
+              name: (fileObj.name as string) || `file_${index + 1}.move`,
+              type: (fileObj.type as string) || 'move',
+              content: (fileObj.content as string) || '',
+              parentId: fileObj.parentId as string | undefined
+            };
+          }
+          return {
+            id: `file_${index}`,
+            name: `file_${index + 1}.move`,
+            type: 'move',
+            content: typeof file === 'string' ? file : '',
+          };
+        });
+      } else if (typeof files === 'object' && files !== null) {
+        return Object.values(files as Record<string, unknown>).map((file, index) => {
+          if (typeof file === 'object' && file !== null) {
+            const fileObj = file as Record<string, unknown>;
+            return {
+              id: (fileObj.id as string) || `file_${index}`,
+              name: (fileObj.name as string) || `file_${index + 1}.move`,
+              type: (fileObj.type as string) || 'move',
+              content: (fileObj.content as string) || '',
+              parentId: fileObj.parentId as string | undefined
+            };
+          }
+          return {
+            id: `file_${index}`,
+            name: `file_${index + 1}.move`,
+            type: 'move',
+            content: typeof file === 'string' ? file : '',
+          };
+        });
+      }
+    } catch (e) {
+      console.error('Error parsing files:', e);
+    }
+    
+    return [];
+  };
+
   const loadProjects = async (showRefreshingIndicator = false) => {
     if (!userProfile) {
       setLoading(false);
@@ -77,20 +127,7 @@ const ProjectHistory = () => {
       const convertedProjects: Project[] = (data || []).map(item => {
         console.log('Processing project item:', item);
         
-        let files: ProjectFile[] = [];
-        if (item.files) {
-          try {
-            // Handle both array and object formats
-            if (Array.isArray(item.files)) {
-              files = item.files as unknown as ProjectFile[];
-            } else if (typeof item.files === 'object') {
-              files = Object.values(item.files) as ProjectFile[];
-            }
-          } catch (e) {
-            console.error('Error parsing files for project:', item.id, e);
-            files = [];
-          }
-        }
+        const files = parseProjectFiles(item.files);
 
         return {
           id: item.id,

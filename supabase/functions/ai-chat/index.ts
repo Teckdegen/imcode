@@ -47,21 +47,21 @@ For Move smart contracts, ALWAYS create this folder structure:
 Example folder structure for a token contract:
 ```
 contracts/
-  ├── Token.move
-  ├── TokenConfig.move
-  └── TokenEvents.move
+  Token.move
+  TokenConfig.move
+  TokenEvents.move
 scripts/
-  ├── deploy.js
-  └── interact.js
+  deploy.js
+  interact.js
 tests/
-  ├── token_tests.move
-  └── integration_tests.move
+  token_tests.move
+  integration_tests.move
 config/
-  ├── Move.toml
-  └── network_config.json
+  Move.toml
+  network_config.json
 utils/
-  ├── helpers.move
-  └── constants.move
+  helpers.move
+  constants.move
 hardhat.config.js
 deploy.js
 package.json
