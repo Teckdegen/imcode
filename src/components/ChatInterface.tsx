@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2, Code, FileText } from 'lucide-react';
+import { MessageCircle, Send, Bot, User, AlertTriangle, Zap, Wallet, Loader2, Code, FileText, Edit } from 'lucide-react';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
 import { useChatHistory } from '@/contexts/ChatHistoryContext';
 import { useAICode } from '@/contexts/AICodeContext';
@@ -22,7 +22,7 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   const { isConnected } = useAccount();
   const { userProfile, messagesRemaining, canSendMessage, incrementMessageCount, isLoading } = useWalletAuth();
   const { messages, addMessage } = useChatHistory();
-  const { addFileFromAI } = useAICode();
+  const { files, addFileFromAI, updateFile } = useAICode();
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -50,6 +50,50 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     }
   }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading, addMessage]);
 
+  const detectEditCommand = (message: string) => {
+    const editPatterns = [
+      /edit\s+([^\s]+)/i,
+      /modify\s+([^\s]+)/i,
+      /update\s+([^\s]+)/i,
+      /change\s+([^\s]+)/i
+    ];
+    
+    for (const pattern of editPatterns) {
+      const match = message.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    return null;
+  };
+
+  const findFileByName = (fileName: string) => {
+    return files.find(file => 
+      file.name === fileName || 
+      file.name.endsWith(`/${fileName}`) ||
+      file.name.includes(fileName)
+    );
+  };
+
+  const generateUniqueFileName = (baseName: string): string => {
+    const existingNames = files.map(f => f.name);
+    if (!existingNames.includes(baseName)) {
+      return baseName;
+    }
+
+    let counter = 1;
+    let uniqueName = baseName;
+    const nameWithoutExt = baseName.replace(/\.[^/.]+$/, "");
+    const extension = baseName.match(/\.[^/.]+$/)?.[0] || '';
+
+    while (existingNames.includes(uniqueName)) {
+      uniqueName = `${nameWithoutExt}_${counter}${extension}`;
+      counter++;
+    }
+
+    return uniqueName;
+  };
+
   const extractCodeFromResponse = (response: string) => {
     const codeBlocks = [];
     const regex = /```(\w+)?\n([\s\S]*?)```/g;
@@ -65,7 +109,6 @@ Start by telling me what kind of smart contract project you'd like to create!`,
   };
 
   const removeCodeBlocksFromText = (text: string) => {
-    // Remove code blocks from the text for chat display
     return text.replace(/```(\w+)?\n[\s\S]*?```/g, '').trim();
   };
 
@@ -74,72 +117,72 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     
     // Configuration files
     if (code.includes('module.exports') && code.includes('hardhat')) {
-      return 'hardhat.config.js';
+      return generateUniqueFileName('hardhat.config.js');
     }
     if (code.includes('hardhat run') && code.includes('deploy')) {
-      return 'deploy.js';
+      return generateUniqueFileName('deploy.js');
     }
     if (code.includes('"scripts"') && code.includes('"hardhat"')) {
-      return 'package.json';
+      return generateUniqueFileName('package.json');
     }
     if (code.includes('[dependencies]') || code.includes('[package]')) {
-      return 'config/Move.toml';
+      return generateUniqueFileName('config/Move.toml');
     }
 
     // Contract files with folder structure
     if (language === 'move' || code.includes('module')) {
       if (code.includes('struct Token') || code.includes('token')) {
-        return `contracts/Token.move`;
+        return generateUniqueFileName(`contracts/Token.move`);
       }
       if (code.includes('struct NFT') || code.includes('nft')) {
-        return `contracts/NFT.move`;
+        return generateUniqueFileName(`contracts/NFT.move`);
       }
       if (code.includes('liquidity') || code.includes('pool')) {
-        return `contracts/pools/LiquidityPool.move`;
+        return generateUniqueFileName(`contracts/pools/LiquidityPool.move`);
       }
       if (code.includes('event') || code.includes('Event')) {
-        return `contracts/TokenEvents.move`;
+        return generateUniqueFileName(`contracts/TokenEvents.move`);
       }
       if (code.includes('config') || code.includes('Config')) {
-        return `contracts/TokenConfig.move`;
+        return generateUniqueFileName(`contracts/TokenConfig.move`);
       }
     }
 
     // Test files
     if (code.includes('test') || code.includes('Test') || code.includes('#[test]')) {
-      return `tests/${language === 'move' ? 'token_tests.move' : `test_${index + 1}.${language}`}`;
+      return generateUniqueFileName(`tests/${language === 'move' ? 'token_tests.move' : `test_${index + 1}.${language}`}`);
     }
 
     // Script files
     if (language === 'javascript' || language === 'js') {
       if (code.includes('deploy') || code.includes('Deploy')) {
-        return `scripts/deploy.js`;
+        return generateUniqueFileName(`scripts/deploy.js`);
       }
       if (code.includes('interact') || code.includes('Interact')) {
-        return `scripts/interact.js`;
+        return generateUniqueFileName(`scripts/interact.js`);
       }
-      return `scripts/script_${index + 1}.js`;
+      return generateUniqueFileName(`scripts/script_${index + 1}.js`);
     }
 
     // Utils and helpers
     if (code.includes('utils') || code.includes('helper') || code.includes('Helper')) {
-      return `utils/helpers.move`;
+      return generateUniqueFileName(`utils/helpers.move`);
     }
     if (code.includes('const') && (code.includes('ADDRESS') || code.includes('CONSTANT'))) {
-      return `utils/constants.move`;
+      return generateUniqueFileName(`utils/constants.move`);
     }
 
     // Admin and governance
     if (code.includes('admin') || code.includes('Admin') || code.includes('governance')) {
-      return `contracts/governance/Admin.move`;
+      return generateUniqueFileName(`contracts/governance/Admin.move`);
     }
 
     // Default fallback with folders
     if (language === 'move') {
-      return `contracts/Contract_${index + 1}.move`;
+      return generateUniqueFileName(`contracts/Contract_${index + 1}.move`);
     }
     
-    return `${language === 'javascript' ? 'scripts' : 'contracts'}/file_${index + 1}.${language || 'move'}`;
+    return generateUniqueFileName(`${language === 'javascript' ? 'scripts' : 'contracts'}/file_${index + 1}.${language || 'move'}`);
   };
 
   const handleSendMessage = async () => {
@@ -154,6 +197,23 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     setInputValue('');
     setIsSending(true);
 
+    // Check if this is an edit command
+    const editFileName = detectEditCommand(currentInput);
+    let targetFile = null;
+    
+    if (editFileName) {
+      targetFile = findFileByName(editFileName);
+      if (!targetFile) {
+        toast({
+          title: "File Not Found",
+          description: `Could not find file: ${editFileName}`,
+          variant: "destructive"
+        });
+        setIsSending(false);
+        return;
+      }
+    }
+
     // Trigger the AI interaction callback
     if (onAIInteraction) {
       onAIInteraction();
@@ -163,14 +223,22 @@ Start by telling me what kind of smart contract project you'd like to create!`,
       // Increment message count first
       await incrementMessageCount();
 
-      // Call AI function
+      // Prepare file context for AI
+      const fileContext = files.map(file => ({
+        name: file.name,
+        content: file.content || '',
+        type: file.type
+      }));
+
+      // Call AI function with file context
       const { data, error } = await supabase.functions.invoke('ai-chat', {
         body: {
           message: currentInput,
           context: messages.slice(-4).map(msg => ({
             role: msg.type === 'user' ? 'user' : 'assistant',
             content: msg.content
-          }))
+          })),
+          files: fileContext
         }
       });
 
@@ -183,17 +251,42 @@ Start by telling me what kind of smart contract project you'd like to create!`,
       // Extract code blocks from the response
       const codeBlocks = extractCodeFromResponse(aiResponse);
       
-      // Add files to editor if code blocks are found
+      // Handle file editing vs creation
       if (codeBlocks.length > 0) {
-        codeBlocks.forEach((block, index) => {
-          const fileName = generateFileName(block.code, block.language, index);
-          addFileFromAI(fileName, block.code, block.language);
-        });
+        if (editFileName && targetFile) {
+          // Edit existing file
+          if (codeBlocks.length === 1) {
+            updateFile(targetFile.id, codeBlocks[0].code);
+            toast({
+              title: "File Updated",
+              description: `${targetFile.name} has been successfully modified`,
+            });
+          } else {
+            // Multiple code blocks - update first and create others
+            updateFile(targetFile.id, codeBlocks[0].code);
+            
+            codeBlocks.slice(1).forEach((block, index) => {
+              const fileName = generateFileName(block.code, block.language, index + 1);
+              addFileFromAI(fileName, block.code, block.language);
+            });
 
-        toast({
-          title: "Project Structure Generated",
-          description: `${codeBlocks.length} file(s) with proper folder structure have been added to your editor`,
-        });
+            toast({
+              title: "Files Updated",
+              description: `${targetFile.name} updated and ${codeBlocks.length - 1} new file(s) created`,
+            });
+          }
+        } else {
+          // Create new files
+          codeBlocks.forEach((block, index) => {
+            const fileName = generateFileName(block.code, block.language, index);
+            addFileFromAI(fileName, block.code, block.language);
+          });
+
+          toast({
+            title: "Project Structure Generated",
+            description: `${codeBlocks.length} file(s) with proper folder structure have been added to your editor`,
+          });
+        }
       }
 
       // Remove code blocks from chat message and add clean response
@@ -203,7 +296,11 @@ Start by telling me what kind of smart contract project you'd like to create!`,
         type: 'assistant',
         content: cleanResponse,
         codeGenerated: codeBlocks.length > 0,
-        fileName: codeBlocks.length > 0 ? `Complete project with ${codeBlocks.length} file(s)` : undefined
+        fileName: editFileName && targetFile 
+          ? `Updated: ${targetFile.name}` 
+          : codeBlocks.length > 0 
+            ? `Complete project with ${codeBlocks.length} file(s)` 
+            : undefined
       });
 
     } catch (error) {
@@ -303,6 +400,9 @@ Start by telling me what kind of smart contract project you'd like to create!`,
             </Badge>
           </div>
         </div>
+        <div className="mt-2 p-2 bg-electric-blue-500/10 border border-electric-blue-500/20 rounded text-xs text-electric-blue-300">
+          💡 <strong>Enhanced Features:</strong> Use "edit filename.move" to modify existing files, or "@filename" to reference files in your message
+        </div>
       </CardHeader>
       
       <CardContent className="flex-1 flex flex-col p-0 min-h-0">
@@ -330,8 +430,8 @@ Start by telling me what kind of smart contract project you'd like to create!`,
                         </div>
                         {message.codeGenerated && (
                           <div className="flex items-center gap-1 text-xs text-green-400">
-                            <Code className="w-3 h-3" />
-                            <span>Code added to editor</span>
+                            {message.fileName?.includes('Updated:') ? <Edit className="w-3 h-3" /> : <Code className="w-3 h-3" />}
+                            <span>{message.fileName?.includes('Updated:') ? 'File edited' : 'Code added'}</span>
                           </div>
                         )}
                       </div>
@@ -381,7 +481,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Ask me to create a complete project with tokens, NFTs, DeFi protocols, or any Move contract..."
+                placeholder="Create comprehensive projects, edit specific files (e.g., 'edit Token.move'), or reference files with @filename..."
                 className="flex-1 bg-cyber-black-300/50 border-electric-blue-500/20 text-electric-blue-100 placeholder:text-electric-blue-400/60 focus:border-electric-blue-500/40 focus:ring-electric-blue-500/20"
                 disabled={isSending}
               />

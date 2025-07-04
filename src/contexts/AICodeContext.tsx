@@ -23,6 +23,8 @@ interface AICodeContextType {
   setFiles: (files: FileItem[]) => void;
   addFileFromAI: (fileName: string, content: string, type?: string) => void;
   updateFile: (fileId: string, content: string) => void;
+  editFileByName: (fileName: string, content: string) => boolean;
+  findFileByName: (fileName: string) => FileItem | undefined;
   deleteFile: (fileId: string) => void;
   selectedFileId: string;
   setSelectedFileId: (id: string) => void;
@@ -53,20 +55,51 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
 
   // Generate a unique filename if duplicates exist
   const generateUniqueFileName = useCallback((fileName: string, existingFiles: FileItem[]): string => {
+    const existingNames = existingFiles.map(f => f.name);
+    
+    if (!existingNames.includes(fileName)) {
+      return fileName;
+    }
+
     const baseName = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
     const extension = fileName.match(/\.[^/.]+$/)?.[0] || ''; // Get extension
     
-    const existingNames = existingFiles.map(f => f.name);
-    let counter = 0;
+    let counter = 1;
     let uniqueName = fileName;
     
     while (existingNames.includes(uniqueName)) {
-      counter++;
       uniqueName = `${baseName}_${counter}${extension}`;
+      counter++;
     }
     
     return uniqueName;
   }, []);
+
+  // Enhanced file finding with multiple matching strategies
+  const findFileByName = useCallback((fileName: string): FileItem | undefined => {
+    // Try exact match first
+    let file = files.find(f => f.name === fileName);
+    if (file) return file;
+
+    // Try case-insensitive exact match
+    file = files.find(f => f.name.toLowerCase() === fileName.toLowerCase());
+    if (file) return file;
+
+    // Try partial match (ends with)
+    file = files.find(f => f.name.endsWith(fileName));
+    if (file) return file;
+
+    // Try partial match (contains)
+    file = files.find(f => f.name.includes(fileName));
+    if (file) return file;
+
+    // Try without extension
+    const nameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+    file = files.find(f => f.name.includes(nameWithoutExt));
+    if (file) return file;
+
+    return undefined;
+  }, [files]);
 
   // Organize files into directories based on AI-generated content type
   const organizeFileIntoDirectory = useCallback((fileName: string, type: string): string => {
@@ -85,13 +118,43 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   }, []);
 
   const addFileFromAI = useCallback((fileName: string, content: string, type: string = 'move') => {
+    // Check if file already exists and should be updated instead
+    const existingFile = findFileByName(fileName);
+    if (existingFile) {
+      // Update existing file instead of creating duplicate
+      setFiles(prev => prev.map(file => 
+        file.id === existingFile.id 
+          ? { ...file, content: content }
+          : file
+      ));
+      setSelectedFileId(existingFile.id);
+      
+      // Update current project if exists
+      if (currentProject) {
+        const updatedFiles = files.map(file => 
+          file.id === existingFile.id 
+            ? { ...file, content: content }
+            : file
+        );
+        const updatedProject = {
+          ...currentProject,
+          files: updatedFiles,
+          updatedAt: new Date().toISOString()
+        };
+        setCurrentProject(updatedProject);
+      }
+      return;
+    }
+
+    // Create new file with unique name
     const uniqueFileName = generateUniqueFileName(fileName, files);
     const organizedPath = organizeFileIntoDirectory(uniqueFileName, type);
-    const uniqueId = `${organizedPath.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const finalUniqueName = generateUniqueFileName(organizedPath, files);
+    const uniqueId = `${finalUniqueName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const newFile: FileItem = {
       id: uniqueId,
-      name: organizedPath,
+      name: finalUniqueName,
       type: 'file',
       content: content,
       parentId: undefined
@@ -109,7 +172,7 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       };
       setCurrentProject(updatedProject);
     }
-  }, [files, generateUniqueFileName, organizeFileIntoDirectory, currentProject]);
+  }, [files, generateUniqueFileName, organizeFileIntoDirectory, currentProject, findFileByName]);
 
   const updateFile = useCallback((fileId: string, content: string) => {
     setFiles(prev => prev.map(file => 
@@ -129,6 +192,18 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       setCurrentProject(updatedProject);
     }
   }, [files, currentProject]);
+
+  // Edit file by name - returns true if successful, false if file not found
+  const editFileByName = useCallback((fileName: string, content: string): boolean => {
+    const file = findFileByName(fileName);
+    if (!file) {
+      return false;
+    }
+    
+    updateFile(file.id, content);
+    setSelectedFileId(file.id);
+    return true;
+  }, [findFileByName, updateFile]);
 
   const deleteFile = useCallback((fileId: string) => {
     setFiles(prev => prev.filter(file => file.id !== fileId));
@@ -174,6 +249,8 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       setFiles,
       addFileFromAI,
       updateFile,
+      editFileByName,
+      findFileByName,
       deleteFile,
       selectedFileId,
       setSelectedFileId,
