@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,11 +15,14 @@ import {
   Rocket,
   Clock,
   CheckCircle,
-  RefreshCw
+  RefreshCw,
+  Edit,
+  FolderTree
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useWalletAuth } from '@/contexts/WalletAuthContext';
+import { useAICode } from '@/contexts/AICodeContext';
 import type { Json } from '@/integrations/supabase/types';
 
 interface ProjectFile {
@@ -47,12 +51,12 @@ const ProjectHistory = () => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const { toast } = useToast();
   const { userProfile } = useWalletAuth();
+  const { loadProject, currentProject } = useAICode();
 
   const parseProjectFiles = (files: Json): ProjectFile[] => {
     if (!files) return [];
     
     try {
-      // Handle both array and object formats
       if (Array.isArray(files)) {
         return files.map((file, index) => {
           if (typeof file === 'object' && file !== null) {
@@ -108,25 +112,18 @@ const ProjectHistory = () => {
     try {
       if (showRefreshingIndicator) setRefreshing(true);
       
-      console.log('Loading projects for user:', userProfile.id);
-      
       const { data, error } = await supabase
         .from('projects')
         .select('*')
         .eq('user_id', userProfile.id)
         .order('created_at', { ascending: false });
 
-      console.log('Projects query result:', { data, error });
-
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
 
-      // Convert the data to match our Project interface
       const convertedProjects: Project[] = (data || []).map(item => {
-        console.log('Processing project item:', item);
-        
         const files = parseProjectFiles(item.files);
 
         return {
@@ -141,7 +138,6 @@ const ProjectHistory = () => {
         };
       });
 
-      console.log('Converted projects:', convertedProjects);
       setProjects(convertedProjects);
       
       if (showRefreshingIndicator) {
@@ -164,12 +160,43 @@ const ProjectHistory = () => {
   };
 
   useEffect(() => {
-    console.log('ProjectHistory useEffect triggered, userProfile:', userProfile);
     loadProjects();
   }, [userProfile]);
 
   const handleRefresh = () => {
     loadProjects(true);
+  };
+
+  const handleLoadProject = (project: Project) => {
+    if (!project.files || project.files.length === 0) {
+      toast({
+        title: "No Files Found",
+        description: "This project doesn't contain any files to load.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const projectData = {
+      id: project.id,
+      name: project.name,
+      files: project.files.map(file => ({
+        id: file.id,
+        name: file.name,
+        type: file.type as 'file' | 'folder',
+        content: file.content,
+        parentId: file.parentId
+      })),
+      createdAt: project.created_at,
+      updatedAt: new Date().toISOString()
+    };
+
+    loadProject(projectData);
+    
+    toast({
+      title: "Project Loaded",
+      description: `${project.name} has been loaded into the editor.`,
+    });
   };
 
   const deleteProject = async (projectId: string) => {
@@ -219,6 +246,31 @@ const ProjectHistory = () => {
     }
   };
 
+  const organizeFilesByFolder = (files: ProjectFile[]) => {
+    const folderStructure: { [key: string]: ProjectFile[] } = {};
+    
+    files.forEach(file => {
+      const pathParts = file.name.split('/');
+      if (pathParts.length > 1) {
+        const folder = pathParts[0];
+        if (!folderStructure[folder]) {
+          folderStructure[folder] = [];
+        }
+        folderStructure[folder].push({
+          ...file,
+          name: pathParts.slice(1).join('/')
+        });
+      } else {
+        if (!folderStructure['root']) {
+          folderStructure['root'] = [];
+        }
+        folderStructure['root'].push(file);
+      }
+    });
+    
+    return folderStructure;
+  };
+
   if (loading) {
     return (
       <Card className="h-full bg-cyber-black-400/50 border-electric-blue-500/20 backdrop-blur-sm">
@@ -239,6 +291,11 @@ const ProjectHistory = () => {
           <CardTitle className="text-electric-blue-100 flex items-center gap-2">
             <FolderOpen className="w-5 h-5" />
             Project History
+            {currentProject && (
+              <Badge className="bg-electric-blue-500/20 text-electric-blue-300 border-electric-blue-500/30">
+                Editing: {currentProject.name}
+              </Badge>
+            )}
           </CardTitle>
           <Button
             size="sm"
@@ -295,7 +352,10 @@ const ProjectHistory = () => {
                             {project.type.replace('_', ' ').toUpperCase()}
                           </span>
                           {project.files && (
-                            <span>{project.files.length} file(s)</span>
+                            <span className="flex items-center gap-1">
+                              <FolderTree className="w-3 h-3" />
+                              {project.files.length} file(s)
+                            </span>
                           )}
                         </div>
 
@@ -309,6 +369,17 @@ const ProjectHistory = () => {
                       </div>
                       
                       <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10"
+                          onClick={() => handleLoadProject(project)}
+                          disabled={currentProject?.id === project.id}
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          {currentProject?.id === project.id ? 'Current' : 'Load'}
+                        </Button>
+                        
                         <Dialog>
                           <DialogTrigger asChild>
                             <Button
@@ -329,16 +400,26 @@ const ProjectHistory = () => {
                             <ScrollArea className="max-h-[60vh]">
                               {selectedProject?.files && selectedProject.files.length > 0 ? (
                                 <div className="space-y-4">
-                                  {selectedProject.files.map((file: ProjectFile, index: number) => (
-                                    <div key={index} className="border border-electric-blue-500/20 rounded-lg">
-                                      <div className="bg-cyber-black-300/50 px-4 py-2 border-b border-electric-blue-500/20">
-                                        <span className="text-electric-blue-200 font-mono text-sm">
-                                          {file.name || `file_${index + 1}.move`}
-                                        </span>
-                                      </div>
-                                      <pre className="p-4 text-sm text-electric-blue-200 overflow-x-auto">
-                                        <code>{file.content || 'No content available'}</code>
-                                      </pre>
+                                  {Object.entries(organizeFilesByFolder(selectedProject.files)).map(([folderName, folderFiles]) => (
+                                    <div key={folderName} className="space-y-2">
+                                      {folderName !== 'root' && (
+                                        <div className="flex items-center gap-2 text-electric-blue-300 font-medium text-sm py-2 border-b border-electric-blue-500/20">
+                                          <FolderOpen className="w-4 h-4 text-electric-blue-400" />
+                                          <span>{folderName}/</span>
+                                        </div>
+                                      )}
+                                      {folderFiles.map((file: ProjectFile, index: number) => (
+                                        <div key={index} className="border border-electric-blue-500/20 rounded-lg ml-4">
+                                          <div className="bg-cyber-black-300/50 px-4 py-2 border-b border-electric-blue-500/20">
+                                            <span className="text-electric-blue-200 font-mono text-sm">
+                                              {file.name}
+                                            </span>
+                                          </div>
+                                          <pre className="p-4 text-sm text-electric-blue-200 overflow-x-auto">
+                                            <code>{file.content || 'No content available'}</code>
+                                          </pre>
+                                        </div>
+                                      ))}
                                     </div>
                                   ))}
                                 </div>

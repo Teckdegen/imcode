@@ -23,7 +23,9 @@ import {
   Save,
   Key,
   Copy,
-  FolderOpen
+  FolderOpen,
+  Plus,
+  FolderTree
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAICode } from '@/contexts/AICodeContext';
@@ -48,11 +50,21 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [showPrivateKeyDialog, setShowPrivateKeyDialog] = useState(false);
+  const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
   const [privateKey, setPrivateKey] = useState('');
   const [deployedContractAddress, setDeployedContractAddress] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
-  const { files, selectedFileId, setSelectedFileId, updateFile, deleteFile } = useAICode();
+  const { 
+    files, 
+    selectedFileId, 
+    setSelectedFileId, 
+    updateFile, 
+    deleteFile, 
+    currentProject,
+    createNewProject 
+  } = useAICode();
   const { userProfile } = useWalletAuth();
   const [consoleOutput, setConsoleOutput] = useState([
     { type: 'info', message: 'ImCode Blue & Black - Move Smart Contract IDE', timestamp: new Date() },
@@ -170,8 +182,28 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
     }
   };
 
+  const handleCreateNewProject = () => {
+    if (!newProjectName.trim()) {
+      toast({
+        title: "Project Name Required",
+        description: "Please enter a name for your new project.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    createNewProject(newProjectName.trim());
+    setNewProjectName('');
+    setShowNewProjectDialog(false);
+    
+    toast({
+      title: "New Project Created",
+      description: `Project "${newProjectName}" has been created.`,
+    });
+  };
+
   const handleSaveProject = async () => {
-    if (!userProfile || files.length === 0) {
+    if (!userProfile || (!currentProject && files.length === 0)) {
       toast({
         title: "Nothing to Save",
         description: "No files to save or user not authenticated.",
@@ -181,7 +213,6 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
     }
 
     try {
-      // Convert FileItem[] to JSON-compatible format
       const filesJson = files.map(file => ({
         id: file.id,
         name: file.name,
@@ -192,26 +223,45 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
 
       const projectData = {
         user_id: userProfile.id,
-        name: `Project_${new Date().toISOString().split('T')[0]}`,
+        name: currentProject?.name || `Project_${new Date().toISOString().split('T')[0]}`,
         type: 'move_contract',
         files: filesJson,
         status: 'draft'
       };
 
-      const { error } = await supabase
-        .from('projects')
-        .insert(projectData);
+      if (currentProject) {
+        // Update existing project
+        const { error } = await supabase
+          .from('projects')
+          .update({
+            files: filesJson,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', currentProject.id);
 
-      if (error) throw error;
+        if (error) throw error;
+        
+        toast({
+          title: "Project Updated",
+          description: `${currentProject.name} has been saved successfully.`
+        });
+      } else {
+        // Create new project
+        const { error } = await supabase
+          .from('projects')
+          .insert(projectData);
 
-      toast({
-        title: "Project Saved",
-        description: "Your Move project has been saved successfully."
-      });
+        if (error) throw error;
+        
+        toast({
+          title: "Project Saved",
+          description: "Your Move project has been saved successfully."
+        });
+      }
 
       setConsoleOutput(prev => [...prev, {
         type: 'success',
-        message: 'Project saved to database',
+        message: currentProject ? 'Project updated in database' : 'Project saved to database',
         timestamp: new Date()
       }]);
     } catch (error) {
@@ -395,8 +445,22 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
             <CardTitle className="text-electric-blue-100 flex items-center gap-2">
               <Code2 className="w-5 h-5" />
               Code Editor
+              {currentProject && (
+                <Badge className="bg-electric-blue-500/20 text-electric-blue-300 border-electric-blue-500/30">
+                  {currentProject.name}
+                </Badge>
+              )}
             </CardTitle>
             <div className="flex items-center gap-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="border-electric-blue-500/30 text-electric-blue-300 hover:bg-electric-blue-500/10"
+                onClick={() => setShowNewProjectDialog(true)}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                New Project
+              </Button>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -466,13 +530,12 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
             
             <TabsContent value="editor" className="flex-1 mx-6 mt-0">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-full">
-                {/* File Navigator with Folder Structure */}
                 <div className="lg:col-span-1">
                   <Card className="h-full bg-cyber-black-300/30 border-electric-blue-500/10">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm text-electric-blue-200 flex items-center gap-2">
-                        <Folder className="w-4 h-4" />
-                        Project Files
+                        <FolderTree className="w-4 h-4" />
+                        Project Structure
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
@@ -516,7 +579,7 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
                                         className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
                                         onClick={(e) => {
                                           e.stopPropagation();
-                                          handleDeleteFile(file.id);
+                                          deleteFile(file.id);
                                         }}
                                       >
                                         <Trash2 className="w-3 h-3" />
@@ -533,7 +596,6 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
                   </Card>
                 </div>
                 
-                {/* Code Area with Enhanced Styling */}
                 <div className="lg:col-span-3">
                   <Card className="h-full bg-cyber-black-300/30 border-electric-blue-500/10">
                     <CardHeader className="pb-2">
@@ -612,6 +674,41 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
           </Tabs>
         </CardContent>
       </Card>
+
+      {/* New Project Dialog */}
+      <Dialog open={showNewProjectDialog} onOpenChange={setShowNewProjectDialog}>
+        <DialogContent className="bg-cyber-black-400 border-electric-blue-500/20">
+          <DialogHeader>
+            <DialogTitle className="text-electric-blue-100 flex items-center gap-2">
+              <Plus className="w-5 h-5" />
+              Create New Project
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Input
+              placeholder="Enter project name"
+              value={newProjectName}
+              onChange={(e) => setNewProjectName(e.target.value)}
+              className="bg-cyber-black-300/50 border-electric-blue-500/20 text-electric-blue-100"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowNewProjectDialog(false)}
+                className="border-electric-blue-500/30 text-electric-blue-300"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateNewProject}
+                className="bg-electric-blue-500 hover:bg-electric-blue-600 text-white"
+              >
+                Create Project
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Private Key Dialog */}
       <Dialog open={showPrivateKeyDialog} onOpenChange={setShowPrivateKeyDialog}>

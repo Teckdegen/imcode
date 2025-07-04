@@ -7,7 +7,15 @@ interface FileItem {
   type: 'file' | 'folder';
   content?: string;
   parentId?: string;
-  displayName?: string; // Add displayName property to fix TypeScript errors
+  displayName?: string;
+}
+
+interface ProjectData {
+  id: string;
+  name: string;
+  files: FileItem[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface AICodeContextType {
@@ -18,6 +26,10 @@ interface AICodeContextType {
   deleteFile: (fileId: string) => void;
   selectedFileId: string;
   setSelectedFileId: (id: string) => void;
+  currentProject: ProjectData | null;
+  setCurrentProject: (project: ProjectData | null) => void;
+  createNewProject: (name: string) => void;
+  loadProject: (project: ProjectData) => void;
 }
 
 const AICodeContext = createContext<AICodeContextType | undefined>(undefined);
@@ -37,14 +49,49 @@ interface AICodeProviderProps {
 export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string>('');
+  const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
+
+  // Generate a unique filename if duplicates exist
+  const generateUniqueFileName = useCallback((fileName: string, existingFiles: FileItem[]): string => {
+    const baseName = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
+    const extension = fileName.match(/\.[^/.]+$/)?.[0] || ''; // Get extension
+    
+    const existingNames = existingFiles.map(f => f.name);
+    let counter = 0;
+    let uniqueName = fileName;
+    
+    while (existingNames.includes(uniqueName)) {
+      counter++;
+      uniqueName = `${baseName}_${counter}${extension}`;
+    }
+    
+    return uniqueName;
+  }, []);
+
+  // Organize files into directories based on AI-generated content type
+  const organizeFileIntoDirectory = useCallback((fileName: string, type: string): string => {
+    if (fileName.endsWith('.move')) {
+      return `contracts/${fileName}`;
+    } else if (fileName.endsWith('.js') || fileName.endsWith('.ts')) {
+      return `scripts/${fileName}`;
+    } else if (fileName.endsWith('.json')) {
+      return `config/${fileName}`;
+    } else if (fileName.endsWith('.toml')) {
+      return `config/${fileName}`;
+    } else if (fileName.endsWith('.md')) {
+      return `docs/${fileName}`;
+    }
+    return `misc/${fileName}`;
+  }, []);
 
   const addFileFromAI = useCallback((fileName: string, content: string, type: string = 'move') => {
-    // Generate a unique ID based on filename and timestamp to ensure uniqueness
-    const uniqueId = `${fileName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const uniqueFileName = generateUniqueFileName(fileName, files);
+    const organizedPath = organizeFileIntoDirectory(uniqueFileName, type);
+    const uniqueId = `${organizedPath.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const newFile: FileItem = {
       id: uniqueId,
-      name: fileName,
+      name: organizedPath,
       type: 'file',
       content: content,
       parentId: undefined
@@ -52,21 +99,74 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
 
     setFiles(prev => [...prev, newFile]);
     setSelectedFileId(newFile.id);
-  }, []);
+    
+    // Update current project if exists
+    if (currentProject) {
+      const updatedProject = {
+        ...currentProject,
+        files: [...files, newFile],
+        updatedAt: new Date().toISOString()
+      };
+      setCurrentProject(updatedProject);
+    }
+  }, [files, generateUniqueFileName, organizeFileIntoDirectory, currentProject]);
 
   const updateFile = useCallback((fileId: string, content: string) => {
     setFiles(prev => prev.map(file => 
       file.id === fileId ? { ...file, content } : file
     ));
-  }, []);
+    
+    // Update current project if exists
+    if (currentProject) {
+      const updatedFiles = files.map(file => 
+        file.id === fileId ? { ...file, content } : file
+      );
+      const updatedProject = {
+        ...currentProject,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      };
+      setCurrentProject(updatedProject);
+    }
+  }, [files, currentProject]);
 
   const deleteFile = useCallback((fileId: string) => {
-    // Only delete the specific file with the matching ID, not files with similar content
     setFiles(prev => prev.filter(file => file.id !== fileId));
     if (selectedFileId === fileId) {
       setSelectedFileId('');
     }
-  }, [selectedFileId]);
+    
+    // Update current project if exists
+    if (currentProject) {
+      const updatedFiles = files.filter(file => file.id !== fileId);
+      const updatedProject = {
+        ...currentProject,
+        files: updatedFiles,
+        updatedAt: new Date().toISOString()
+      };
+      setCurrentProject(updatedProject);
+    }
+  }, [selectedFileId, files, currentProject]);
+
+  const createNewProject = useCallback((name: string) => {
+    const newProject: ProjectData = {
+      id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      files: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    setCurrentProject(newProject);
+    setFiles([]);
+    setSelectedFileId('');
+  }, []);
+
+  const loadProject = useCallback((project: ProjectData) => {
+    setCurrentProject(project);
+    setFiles(project.files);
+    setSelectedFileId(project.files.length > 0 ? project.files[0].id : '');
+  }, []);
 
   return (
     <AICodeContext.Provider value={{
@@ -76,7 +176,11 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       updateFile,
       deleteFile,
       selectedFileId,
-      setSelectedFileId
+      setSelectedFileId,
+      currentProject,
+      setCurrentProject,
+      createNewProject,
+      loadProject
     }}>
       {children}
     </AICodeContext.Provider>
