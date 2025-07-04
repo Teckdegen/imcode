@@ -1,4 +1,3 @@
-
 import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,7 +22,8 @@ import {
   Trash2,
   Save,
   Key,
-  Copy
+  Copy,
+  FolderOpen
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAICode } from '@/contexts/AICodeContext';
@@ -50,6 +50,60 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
     { type: 'success', message: 'Connected to Umi Network Devnet', timestamp: new Date() },
     { type: 'info', message: 'Ready to compile and deploy Move contracts', timestamp: new Date() }
   ]);
+
+  // Group files by folder structure
+  const organizeFilesByFolder = () => {
+    const folderStructure: { [key: string]: typeof files } = {};
+    
+    files.forEach(file => {
+      const pathParts = file.name.split('/');
+      if (pathParts.length > 1) {
+        const folder = pathParts[0];
+        if (!folderStructure[folder]) {
+          folderStructure[folder] = [];
+        }
+        folderStructure[folder].push({
+          ...file,
+          displayName: pathParts.slice(1).join('/')
+        });
+      } else {
+        if (!folderStructure['root']) {
+          folderStructure['root'] = [];
+        }
+        folderStructure['root'].push({
+          ...file,
+          displayName: file.name
+        });
+      }
+    });
+    
+    return folderStructure;
+  };
+
+  const getFileIcon = (fileName: string) => {
+    if (fileName.endsWith('.move')) return '🔷';
+    if (fileName.endsWith('.js') || fileName.endsWith('.ts')) return '📜';
+    if (fileName.endsWith('.json')) return '⚙️';
+    if (fileName.endsWith('.toml')) return '📋';
+    if (fileName.endsWith('.md')) return '📄';
+    return '📄';
+  };
+
+  const getLanguageBadge = (fileName: string) => {
+    if (fileName.endsWith('.move')) {
+      return <Badge variant="secondary" className="text-xs bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/20">Move</Badge>;
+    }
+    if (fileName.endsWith('.js')) {
+      return <Badge variant="secondary" className="text-xs bg-yellow-500/10 text-yellow-300 border-yellow-500/20">JS</Badge>;
+    }
+    if (fileName.endsWith('.json')) {
+      return <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-300 border-green-500/20">JSON</Badge>;
+    }
+    if (fileName.endsWith('.toml')) {
+      return <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-300 border-purple-500/20">TOML</Badge>;
+    }
+    return null;
+  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -310,6 +364,7 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
   };
 
   const selectedFile = files.find(f => f.id === selectedFileId);
+  const folderStructure = organizeFilesByFolder();
 
   const getConsoleIcon = (type: string) => {
     switch (type) {
@@ -403,11 +458,14 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
             
             <TabsContent value="editor" className="flex-1 mx-6 mt-0">
               <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-full">
-                {/* File Navigator */}
+                {/* File Navigator with Folder Structure */}
                 <div className="lg:col-span-1">
                   <Card className="h-full bg-cyber-black-300/30 border-electric-blue-500/10">
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm text-electric-blue-200">Files</CardTitle>
+                      <CardTitle className="text-sm text-electric-blue-200 flex items-center gap-2">
+                        <Folder className="w-4 h-4" />
+                        Project Files
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
                       <ScrollArea className="h-[400px] px-4">
@@ -418,38 +476,46 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
                             <p className="text-xs mt-1">Ask AI to generate code</p>
                           </div>
                         ) : (
-                          <div className="space-y-1">
-                            {files.map((file) => (
-                              <div 
-                                key={file.id}
-                                className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-electric-blue-500/10 group ${
-                                  selectedFileId === file.id ? 'bg-electric-blue-500/20 text-electric-blue-100' : 'text-electric-blue-300'
-                                }`}
-                                onClick={() => {
-                                  setSelectedFileId(file.id);
-                                  if (!isEditing) {
-                                    handleStartEditing();
-                                  }
-                                }}
-                              >
-                                <FileText className="w-4 h-4 text-electric-blue-400" />
-                                <span className="text-sm flex-1">{file.name}</span>
-                                {file.name.endsWith('.move') && (
-                                  <Badge variant="secondary" className="text-xs bg-electric-blue-500/10 text-electric-blue-300 border-electric-blue-500/20">
-                                    Move
-                                  </Badge>
+                          <div className="space-y-2">
+                            {Object.entries(folderStructure).map(([folderName, folderFiles]) => (
+                              <div key={folderName} className="space-y-1">
+                                {folderName !== 'root' && (
+                                  <div className="flex items-center gap-2 text-electric-blue-300 font-medium text-sm py-1">
+                                    <FolderOpen className="w-4 h-4 text-electric-blue-400" />
+                                    <span>{folderName}/</span>
+                                  </div>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteFile(file.id);
-                                  }}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
+                                <div className={folderName !== 'root' ? 'ml-4 space-y-1' : 'space-y-1'}>
+                                  {folderFiles.map((file) => (
+                                    <div 
+                                      key={file.id}
+                                      className={`flex items-center gap-2 p-2 rounded cursor-pointer hover:bg-electric-blue-500/10 group ${
+                                        selectedFileId === file.id ? 'bg-electric-blue-500/20 text-electric-blue-100' : 'text-electric-blue-300'
+                                      }`}
+                                      onClick={() => {
+                                        setSelectedFileId(file.id);
+                                        if (!isEditing) {
+                                          handleStartEditing();
+                                        }
+                                      }}
+                                    >
+                                      <span className="text-sm">{getFileIcon(file.displayName || file.name)}</span>
+                                      <span className="text-sm flex-1">{file.displayName || file.name}</span>
+                                      {getLanguageBadge(file.name)}
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0 text-red-400 hover:text-red-300 hover:bg-red-500/10 opacity-0 group-hover:opacity-100"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteFile(file.id);
+                                        }}
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -459,7 +525,7 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
                   </Card>
                 </div>
                 
-                {/* Code Area */}
+                {/* Code Area with Enhanced Styling */}
                 <div className="lg:col-span-3">
                   <Card className="h-full bg-cyber-black-300/30 border-electric-blue-500/10">
                     <CardHeader className="pb-2">
@@ -480,8 +546,13 @@ const CodeEditor = ({ onProjectEdit }: CodeEditorProps) => {
                         <Textarea
                           value={selectedFile.content || ''}
                           onChange={(e) => updateFile(selectedFile.id, e.target.value)}
-                          className="h-[400px] resize-none bg-cyber-black-100/30 border-none text-electric-blue-200 font-mono text-sm focus:ring-electric-blue-500/20 focus:border-electric-blue-500/40"
+                          className="h-[400px] resize-none bg-black border-none text-electric-blue-200 font-mono text-sm focus:ring-electric-blue-500/20 focus:border-electric-blue-500/40"
                           placeholder="Your Move contract code will appear here..."
+                          style={{
+                            backgroundColor: '#000000',
+                            color: '#e0e7ff',
+                            fontFamily: 'Monaco, "Courier New", monospace',
+                          }}
                         />
                       ) : (
                         <div className="h-[400px] flex items-center justify-center text-electric-blue-400/60">

@@ -43,7 +43,7 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
 
 When I generate code, I'll automatically create a complete project structure with multiple organized files and folders - including hardhat.config.js, deploy.js, package.json, and proper folder organization like contracts/, scripts/, tests/, config/, and utils/.
 
-Each project will be broken down into logical components with proper configuration files for deployment to Umi Network.
+Each project will be broken down into logical components with proper configuration files for deployment to Umi Network. All generated code will appear directly in the code editor with syntax highlighting.
 
 Start by telling me what kind of smart contract project you'd like to create!`,
       });
@@ -62,6 +62,11 @@ Start by telling me what kind of smart contract project you'd like to create!`,
     }
     
     return codeBlocks;
+  };
+
+  const removeCodeBlocksFromText = (text: string) => {
+    // Remove code blocks from the text for chat display
+    return text.replace(/```(\w+)?\n[\s\S]*?```/g, '').trim();
   };
 
   const generateFileName = (code: string, language: string, index: number) => {
@@ -191,9 +196,12 @@ Start by telling me what kind of smart contract project you'd like to create!`,
         });
       }
 
+      // Remove code blocks from chat message and add clean response
+      const cleanResponse = removeCodeBlocksFromText(aiResponse);
+      
       addMessage({
         type: 'assistant',
-        content: aiResponse,
+        content: cleanResponse,
         codeGenerated: codeBlocks.length > 0,
         fileName: codeBlocks.length > 0 ? `Complete project with ${codeBlocks.length} file(s)` : undefined
       });
@@ -323,7 +331,7 @@ Start by telling me what kind of smart contract project you'd like to create!`,
                         {message.codeGenerated && (
                           <div className="flex items-center gap-1 text-xs text-green-400">
                             <Code className="w-3 h-3" />
-                            <span>Project structure created</span>
+                            <span>Code added to editor</span>
                           </div>
                         )}
                       </div>
