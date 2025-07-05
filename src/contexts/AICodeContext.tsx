@@ -1,5 +1,4 @@
-
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 interface FileItem {
   id: string;
@@ -34,6 +33,8 @@ interface AICodeContextType {
   loadProject: (project: ProjectData) => void;
   getUniqueFileName: (fileName: string) => string;
   preventDuplicateFiles: (fileName: string) => boolean;
+  saveProjectToStorage: () => void;
+  loadProjectFromStorage: () => void;
 }
 
 const AICodeContext = createContext<AICodeContextType | undefined>(undefined);
@@ -54,6 +55,60 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [selectedFileId, setSelectedFileId] = useState<string>('');
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
+
+  // ENHANCED: Load project from localStorage on component mount
+  useEffect(() => {
+    loadProjectFromStorage();
+  }, []);
+
+  // ENHANCED: Auto-save to localStorage whenever files or project changes
+  useEffect(() => {
+    if (currentProject && files.length > 0) {
+      saveProjectToStorage();
+    }
+  }, [files, currentProject]);
+
+  // ENHANCED: Persistent storage functions
+  const saveProjectToStorage = useCallback(() => {
+    if (!currentProject) return;
+    
+    try {
+      const projectToSave = {
+        ...currentProject,
+        files: files,
+        updatedAt: new Date().toISOString()
+      };
+      
+      localStorage.setItem('imcode-current-project', JSON.stringify(projectToSave));
+      localStorage.setItem('imcode-selected-file', selectedFileId);
+      console.log('Project saved to localStorage:', projectToSave.name, 'with', files.length, 'files');
+    } catch (error) {
+      console.error('Failed to save project to localStorage:', error);
+    }
+  }, [currentProject, files, selectedFileId]);
+
+  const loadProjectFromStorage = useCallback(() => {
+    try {
+      const savedProject = localStorage.getItem('imcode-current-project');
+      const savedSelectedFile = localStorage.getItem('imcode-selected-file');
+      
+      if (savedProject) {
+        const project: ProjectData = JSON.parse(savedProject);
+        console.log('Loading project from localStorage:', project.name, 'with', project.files.length, 'files');
+        
+        setCurrentProject(project);
+        setFiles(project.files || []);
+        
+        if (savedSelectedFile && project.files.some(f => f.id === savedSelectedFile)) {
+          setSelectedFileId(savedSelectedFile);
+        } else if (project.files.length > 0) {
+          setSelectedFileId(project.files[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load project from localStorage:', error);
+    }
+  }, []);
 
   // STRICT unique filename generation - absolutely no duplicates allowed
   const getUniqueFileName = useCallback((fileName: string): string => {
@@ -310,8 +365,32 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
     return `misc/${fileName}`;
   }, []);
 
+  // ENHANCED: Strict empty file prevention
+  const validateFileContent = useCallback((content: string, fileName: string): boolean => {
+    if (!content || content.trim().length < 50) {
+      console.warn('File content too short, rejecting:', fileName, content.substring(0, 30));
+      return false;
+    }
+    
+    // Additional validation for Move files
+    if (fileName.endsWith('.move')) {
+      if (!content.includes('module') && !content.includes('struct') && !content.includes('public fun')) {
+        console.warn('Move file missing essential keywords:', fileName);
+        return false;
+      }
+    }
+    
+    return true;
+  }, []);
+
   const addFileFromAI = useCallback((fileName: string, content: string, type: string = 'move') => {
     console.log('Adding file:', fileName, 'Type:', type);
+    
+    // STRICT: Validate content is not empty
+    if (!validateFileContent(content, fileName)) {
+      console.warn('File rejected due to insufficient content:', fileName);
+      return;
+    }
     
     // STRICT duplicate prevention
     if (preventDuplicateFiles(fileName)) {
@@ -344,7 +423,7 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       parentId: undefined
     };
 
-    console.log('Creating new file:', newFile.name);
+    console.log('Creating new file:', newFile.name, 'Content length:', content.length);
     setFiles(prev => [...prev, newFile]);
     setSelectedFileId(newFile.id);
     
@@ -357,10 +436,18 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       };
       setCurrentProject(updatedProject);
     }
-  }, [files, getUniqueFileName, organizeFileIntoDirectory, currentProject, findFileByName, preventDuplicateFiles]);
+  }, [files, getUniqueFileName, organizeFileIntoDirectory, currentProject, findFileByName, preventDuplicateFiles, validateFileContent]);
 
   const updateFile = useCallback((fileId: string, content: string) => {
     console.log('Updating file with ID:', fileId);
+    
+    // Validate content before updating
+    const file = files.find(f => f.id === fileId);
+    if (file && !validateFileContent(content, file.name)) {
+      console.warn('Update rejected due to insufficient content:', file.name);
+      return;
+    }
+    
     setFiles(prev => prev.map(file => 
       file.id === fileId ? { ...file, content } : file
     ));
@@ -377,11 +464,18 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       };
       setCurrentProject(updatedProject);
     }
-  }, [files, currentProject]);
+  }, [files, currentProject, validateFileContent]);
 
   // ENHANCED edit file by name with comprehensive file finding
   const editFileByName = useCallback((fileName: string, content: string): boolean => {
     console.log('Attempting to edit file:', fileName);
+    
+    // Validate content first
+    if (!validateFileContent(content, fileName)) {
+      console.warn('Edit rejected due to insufficient content:', fileName);
+      return false;
+    }
+    
     const file = findFileByName(fileName);
     
     if (!file) {
@@ -410,7 +504,7 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
     updateFile(file.id, finalContent);
     setSelectedFileId(file.id);
     return true;
-  }, [findFileByName, updateFile, files]);
+  }, [findFileByName, updateFile, files, validateFileContent]);
 
   // Intelligent code merging function
   const mergeCodeIntelligently = (existing: string, newCode: string): string => {
@@ -473,6 +567,10 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   }, [selectedFileId, files, currentProject]);
 
   const createNewProject = useCallback((name: string) => {
+    // Clear localStorage when creating new project
+    localStorage.removeItem('imcode-current-project');
+    localStorage.removeItem('imcode-selected-file');
+    
     const newProject: ProjectData = {
       id: `project_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name,
@@ -484,12 +582,14 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
     setCurrentProject(newProject);
     setFiles([]);
     setSelectedFileId('');
+    console.log('Created new project:', name);
   }, []);
 
   const loadProject = useCallback((project: ProjectData) => {
     setCurrentProject(project);
     setFiles(project.files);
     setSelectedFileId(project.files.length > 0 ? project.files[0].id : '');
+    console.log('Loaded project:', project.name, 'with', project.files.length, 'files');
   }, []);
 
   return (
@@ -508,7 +608,9 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       createNewProject,
       loadProject,
       getUniqueFileName,
-      preventDuplicateFiles
+      preventDuplicateFiles,
+      saveProjectToStorage,
+      loadProjectFromStorage
     }}>
       {children}
     </AICodeContext.Provider>
