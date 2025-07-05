@@ -55,7 +55,7 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   const [selectedFileId, setSelectedFileId] = useState<string>('');
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
 
-  // Enhanced unique filename generation with comprehensive checking
+  // STRICT unique filename generation - absolutely no duplicates allowed
   const getUniqueFileName = useCallback((fileName: string): string => {
     const existingNames = files.map(f => f.name.toLowerCase());
     const lowerFileName = fileName.toLowerCase();
@@ -64,105 +64,212 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       return fileName;
     }
 
-    const baseName = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
-    const extension = fileName.match(/\.[^/.]+$/)?.[0] || ''; // Get extension
+    // More aggressive unique naming
+    const pathParts = fileName.split('/');
+    const fileNamePart = pathParts.pop() || fileName;
+    const pathPrefix = pathParts.length > 0 ? pathParts.join('/') + '/' : '';
+    
+    const baseName = fileNamePart.replace(/\.[^/.]+$/, "");
+    const extension = fileNamePart.match(/\.[^/.]+$/)?.[0] || '';
     
     let counter = 1;
     let uniqueName = fileName;
     
-    while (existingNames.includes(uniqueName.toLowerCase())) {
-      uniqueName = `${baseName}_${counter}${extension}`;
+    while (existingNames.includes((pathPrefix + baseName + (counter > 1 ? `_v${counter}` : '') + extension).toLowerCase())) {
       counter++;
+      uniqueName = pathPrefix + baseName + `_v${counter}` + extension;
     }
     
     return uniqueName;
   }, [files]);
 
-  // Check if a file name would create a duplicate
+  // STRICT duplicate prevention - reject any potential duplicates
   const preventDuplicateFiles = useCallback((fileName: string): boolean => {
     const existingNames = files.map(f => f.name.toLowerCase());
-    return existingNames.includes(fileName.toLowerCase());
+    const lowerFileName = fileName.toLowerCase();
+    
+    // Check exact match
+    if (existingNames.includes(lowerFileName)) {
+      return true;
+    }
+    
+    // Check similar names that could cause confusion
+    const baseName = fileName.replace(/\.[^/.]+$/, "").toLowerCase();
+    const extension = fileName.match(/\.[^/.]+$/)?.[0] || '';
+    
+    const similarExists = existingNames.some(existingName => {
+      const existingBase = existingName.replace(/\.[^/.]+$/, "");
+      const existingExt = existingName.match(/\.[^/.]+$/)?.[0] || '';
+      
+      return existingBase === baseName && existingExt === extension;
+    });
+    
+    return similarExists;
   }, [files]);
 
-  // Enhanced file finding with multiple matching strategies
+  // ENHANCED file finding with comprehensive matching strategies
   const findFileByName = useCallback((fileName: string): FileItem | undefined => {
+    console.log('Searching for file:', fileName, 'in', files.length, 'files');
+    
     // Clean the filename (remove @ symbol if present)
     const cleanFileName = fileName.startsWith('@') ? fileName.substring(1) : fileName;
     
-    // Try exact match first (case sensitive)
+    // Strategy 1: Exact match (case sensitive)
     let file = files.find(f => f.name === cleanFileName);
-    if (file) return file;
+    if (file) {
+      console.log('Found exact match:', file.name);
+      return file;
+    }
 
-    // Try case-insensitive exact match
+    // Strategy 2: Case-insensitive exact match
     file = files.find(f => f.name.toLowerCase() === cleanFileName.toLowerCase());
-    if (file) return file;
+    if (file) {
+      console.log('Found case-insensitive match:', file.name);
+      return file;
+    }
 
-    // Try partial match (ends with) - useful for paths like contracts/Token.move
+    // Strategy 3: Ends with match (for path-based files)
     file = files.find(f => f.name.endsWith(cleanFileName));
-    if (file) return file;
+    if (file) {
+      console.log('Found ends-with match:', file.name);
+      return file;
+    }
 
-    // Try partial match (contains) - useful for finding files in subdirectories
+    // Strategy 4: Contains match
     file = files.find(f => f.name.includes(cleanFileName));
-    if (file) return file;
+    if (file) {
+      console.log('Found contains match:', file.name);
+      return file;
+    }
 
-    // Try without extension
-    const nameWithoutExt = cleanFileName.replace(/\.[^/.]+$/, "");
-    file = files.find(f => f.name.includes(nameWithoutExt));
-    if (file) return file;
-
-    // Try basename matching (last part of path)
-    const baseName = cleanFileName.split('/').pop() || cleanFileName;
+    // Strategy 5: Base name matching (without path and extension)
+    const baseSearchName = cleanFileName.split('/').pop()?.replace(/\.[^/.]+$/, "") || cleanFileName;
     file = files.find(f => {
-      const fileBaseName = f.name.split('/').pop() || f.name;
-      return fileBaseName.toLowerCase() === baseName.toLowerCase();
+      const fileBaseName = f.name.split('/').pop()?.replace(/\.[^/.]+$/, "") || f.name;
+      return fileBaseName.toLowerCase() === baseSearchName.toLowerCase();
     });
-    if (file) return file;
+    if (file) {
+      console.log('Found base name match:', file.name);
+      return file;
+    }
 
+    // Strategy 6: Fuzzy matching for common typos
+    file = files.find(f => {
+      const fileName1 = f.name.toLowerCase().replace(/[_\-\.\/]/g, '');
+      const fileName2 = cleanFileName.toLowerCase().replace(/[_\-\.\/]/g, '');
+      return fileName1 === fileName2;
+    });
+    if (file) {
+      console.log('Found fuzzy match:', file.name);
+      return file;
+    }
+
+    console.log('File not found. Available files:', files.map(f => f.name));
     return undefined;
   }, [files]);
 
-  // Smart file organization based on content type and AI patterns
+  // IMPROVED file organization with deeper, more logical structure
   const organizeFileIntoDirectory = useCallback((fileName: string, content: string, type: string): string => {
-    // Don't reorganize if already has a path
-    if (fileName.includes('/')) {
+    // Don't reorganize if already has a deep path (3+ levels)
+    const pathDepth = (fileName.match(/\//g) || []).length;
+    if (pathDepth >= 2) {
       return fileName;
     }
 
-    // Analyze content to determine best folder
     const lowerContent = content.toLowerCase();
     const lowerFileName = fileName.toLowerCase();
 
-    // Move contracts
+    // Move contracts with detailed categorization
     if (fileName.endsWith('.move') || lowerContent.includes('module') || lowerContent.includes('struct')) {
+      // Core protocol contracts
+      if (lowerContent.includes('core') || lowerContent.includes('main') || lowerContent.includes('primary')) {
+        return `contracts/core/${fileName}`;
+      }
+      
+      // Token-specific contracts
       if (lowerContent.includes('token') || lowerFileName.includes('token')) {
+        if (lowerContent.includes('erc20') || lowerContent.includes('fungible')) {
+          return `contracts/tokens/fungible/${fileName}`;
+        }
+        if (lowerContent.includes('nft') || lowerContent.includes('erc721')) {
+          return `contracts/tokens/nft/${fileName}`;
+        }
         return `contracts/tokens/${fileName}`;
       }
-      if (lowerContent.includes('nft') || lowerFileName.includes('nft')) {
-        return `contracts/nft/${fileName}`;
-      }
+      
+      // DeFi protocols
       if (lowerContent.includes('defi') || lowerContent.includes('liquidity') || lowerContent.includes('pool')) {
+        if (lowerContent.includes('liquidity')) {
+          return `contracts/defi/liquidity/${fileName}`;
+        }
+        if (lowerContent.includes('swap') || lowerContent.includes('exchange')) {
+          return `contracts/defi/exchange/${fileName}`;
+        }
+        if (lowerContent.includes('lending') || lowerContent.includes('borrow')) {
+          return `contracts/defi/lending/${fileName}`;
+        }
         return `contracts/defi/${fileName}`;
       }
-      if (lowerContent.includes('governance') || lowerContent.includes('dao')) {
+      
+      // Governance and DAO
+      if (lowerContent.includes('governance') || lowerContent.includes('dao') || lowerContent.includes('voting')) {
         return `contracts/governance/${fileName}`;
       }
-      return `contracts/${fileName}`;
+      
+      // NFT collections and marketplaces
+      if (lowerContent.includes('nft') || lowerFileName.includes('nft')) {
+        if (lowerContent.includes('marketplace')) {
+          return `contracts/nft/marketplace/${fileName}`;
+        }
+        if (lowerContent.includes('collection')) {
+          return `contracts/nft/collections/${fileName}`;
+        }
+        return `contracts/nft/${fileName}`;
+      }
+      
+      // Utility and helper contracts
+      if (lowerContent.includes('util') || lowerContent.includes('helper') || lowerContent.includes('library')) {
+        return `contracts/utils/${fileName}`;
+      }
+      
+      // Access control and permissions
+      if (lowerContent.includes('access') || lowerContent.includes('role') || lowerContent.includes('permission')) {
+        return `contracts/access/${fileName}`;
+      }
+      
+      return `contracts/core/${fileName}`;
     }
 
-    // JavaScript/TypeScript files
+    // Enhanced JavaScript/TypeScript organization
     if (fileName.endsWith('.js') || fileName.endsWith('.ts')) {
       if (lowerContent.includes('deploy') || lowerFileName.includes('deploy')) {
+        if (lowerContent.includes('mainnet') || lowerFileName.includes('mainnet')) {
+          return `scripts/deployment/mainnet/${fileName}`;
+        }
+        if (lowerContent.includes('testnet') || lowerFileName.includes('testnet')) {
+          return `scripts/deployment/testnet/${fileName}`;
+        }
         return `scripts/deployment/${fileName}`;
       }
+      
       if (lowerContent.includes('test') || lowerFileName.includes('test')) {
+        if (lowerContent.includes('integration')) {
+          return `tests/integration/${fileName}`;
+        }
+        if (lowerContent.includes('unit')) {
+          return `tests/unit/${fileName}`;
+        }
         return `tests/${fileName}`;
       }
+      
       if (lowerContent.includes('interact') || lowerFileName.includes('interact')) {
         return `scripts/interaction/${fileName}`;
       }
-      if (lowerContent.includes('hardhat') || lowerFileName.includes('hardhat')) {
+      
+      if (lowerContent.includes('config') || lowerFileName.includes('config')) {
         return `config/${fileName}`;
       }
+      
       return `scripts/${fileName}`;
     }
 
@@ -171,6 +278,9 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       if (lowerFileName.includes('package')) {
         return fileName; // Keep package.json at root
       }
+      if (lowerFileName.includes('network')) {
+        return `config/networks/${fileName}`;
+      }
       return `config/${fileName}`;
     }
 
@@ -178,18 +288,22 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       return `config/${fileName}`;
     }
 
-    // Documentation
+    // Documentation with categories
     if (fileName.endsWith('.md')) {
+      if (lowerFileName.includes('readme')) {
+        return fileName; // Keep README at root
+      }
+      if (lowerFileName.includes('api')) {
+        return `docs/api/${fileName}`;
+      }
+      if (lowerFileName.includes('deploy')) {
+        return `docs/deployment/${fileName}`;
+      }
       return `docs/${fileName}`;
     }
 
-    // Utility files
-    if (lowerFileName.includes('util') || lowerFileName.includes('helper')) {
-      return `utils/${fileName}`;
-    }
-
-    // Types
-    if (fileName.endsWith('.d.ts') || lowerContent.includes('interface') || lowerContent.includes('type ')) {
+    // TypeScript definitions
+    if (fileName.endsWith('.d.ts')) {
       return `types/${fileName}`;
     }
 
@@ -197,47 +311,40 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   }, []);
 
   const addFileFromAI = useCallback((fileName: string, content: string, type: string = 'move') => {
+    console.log('Adding file:', fileName, 'Type:', type);
+    
+    // STRICT duplicate prevention
+    if (preventDuplicateFiles(fileName)) {
+      console.warn('Preventing duplicate file creation:', fileName);
+      const uniqueName = getUniqueFileName(fileName);
+      console.log('Using unique name instead:', uniqueName);
+      fileName = uniqueName;
+    }
+
     // Check if file already exists and should be updated instead
     const existingFile = findFileByName(fileName);
     if (existingFile) {
-      // Update existing file instead of creating duplicate
-      setFiles(prev => prev.map(file => 
-        file.id === existingFile.id 
-          ? { ...file, content: content }
-          : file
-      ));
+      console.log('File exists, updating instead of creating:', existingFile.name);
+      updateFile(existingFile.id, content);
       setSelectedFileId(existingFile.id);
-      
-      // Update current project if exists
-      if (currentProject) {
-        const updatedFiles = files.map(file => 
-          file.id === existingFile.id 
-            ? { ...file, content: content }
-            : file
-        );
-        const updatedProject = {
-          ...currentProject,
-          files: updatedFiles,
-          updatedAt: new Date().toISOString()
-        };
-        setCurrentProject(updatedProject);
-      }
       return;
     }
 
-    // Organize file into appropriate directory structure
+    // Organize into improved directory structure
     const organizedPath = organizeFileIntoDirectory(fileName, content, type);
-    const uniqueFileName = getUniqueFileName(organizedPath);
-    const uniqueId = `${uniqueFileName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const finalFileName = getUniqueFileName(organizedPath);
+    
+    const uniqueId = `${finalFileName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const newFile: FileItem = {
       id: uniqueId,
-      name: uniqueFileName,
+      name: finalFileName,
       type: 'file',
       content: content,
       parentId: undefined
     };
 
+    console.log('Creating new file:', newFile.name);
     setFiles(prev => [...prev, newFile]);
     setSelectedFileId(newFile.id);
     
@@ -250,9 +357,10 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       };
       setCurrentProject(updatedProject);
     }
-  }, [files, getUniqueFileName, organizeFileIntoDirectory, currentProject, findFileByName]);
+  }, [files, getUniqueFileName, organizeFileIntoDirectory, currentProject, findFileByName, preventDuplicateFiles]);
 
   const updateFile = useCallback((fileId: string, content: string) => {
+    console.log('Updating file with ID:', fileId);
     setFiles(prev => prev.map(file => 
       file.id === fileId ? { ...file, content } : file
     ));
@@ -271,26 +379,80 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
     }
   }, [files, currentProject]);
 
-  // Enhanced edit file by name with better matching and content merging
+  // ENHANCED edit file by name with comprehensive file finding
   const editFileByName = useCallback((fileName: string, content: string): boolean => {
+    console.log('Attempting to edit file:', fileName);
     const file = findFileByName(fileName);
+    
     if (!file) {
-      console.warn(`File not found: ${fileName}. Available files:`, files.map(f => f.name));
+      console.error(`File not found: ${fileName}`);
+      console.log('Available files:', files.map(f => f.name));
       return false;
     }
     
-    // Smart content merging - if content starts with "// ADD:" or similar, append instead of replace
+    console.log('Found file to edit:', file.name);
+    
+    // Enhanced content merging with better logic
     let finalContent = content;
-    if (content.startsWith('// ADD:') || content.startsWith('// APPEND:')) {
-      finalContent = (file.content || '') + '\n\n' + content.replace(/^\/\/ (ADD|APPEND):\s*/, '');
-    } else if (content.startsWith('// PREPEND:')) {
-      finalContent = content.replace(/^\/\/ PREPEND:\s*/, '') + '\n\n' + (file.content || '');
+    const lowerContent = content.toLowerCase();
+    
+    if (lowerContent.startsWith('// add:') || lowerContent.startsWith('// append:')) {
+      finalContent = (file.content || '') + '\n\n' + content.replace(/^\/\/ (add|append):\s*/i, '');
+    } else if (lowerContent.startsWith('// prepend:')) {
+      finalContent = content.replace(/^\/\/ prepend:\s*/i, '') + '\n\n' + (file.content || '');
+    } else if (lowerContent.startsWith('// merge:')) {
+      // Intelligent merge - try to combine without duplicating imports/modules
+      const existingContent = file.content || '';
+      const newContent = content.replace(/^\/\/ merge:\s*/i, '');
+      finalContent = mergeCodeIntelligently(existingContent, newContent);
     }
     
     updateFile(file.id, finalContent);
     setSelectedFileId(file.id);
     return true;
-  }, [findFileByName, updateFile]);
+  }, [findFileByName, updateFile, files]);
+
+  // Intelligent code merging function
+  const mergeCodeIntelligently = (existing: string, newCode: string): string => {
+    const existingLines = existing.split('\n');
+    const newLines = newCode.split('\n');
+    
+    // Extract imports/use statements
+    const existingImports = existingLines.filter(line => 
+      line.trim().startsWith('use ') || 
+      line.trim().startsWith('import ') ||
+      line.trim().startsWith('const ') && line.includes('require(')
+    );
+    
+    const newImports = newLines.filter(line => 
+      line.trim().startsWith('use ') || 
+      line.trim().startsWith('import ') ||
+      line.trim().startsWith('const ') && line.includes('require(')
+    );
+    
+    // Merge imports without duplicates
+    const allImports = [...existingImports];
+    newImports.forEach(newImport => {
+      if (!existingImports.some(existing => existing.trim() === newImport.trim())) {
+        allImports.push(newImport);
+      }
+    });
+    
+    // Get non-import content
+    const existingCode = existingLines.filter(line => 
+      !line.trim().startsWith('use ') && 
+      !line.trim().startsWith('import ') &&
+      !(line.trim().startsWith('const ') && line.includes('require('))
+    ).join('\n');
+    
+    const newCodeContent = newLines.filter(line => 
+      !line.trim().startsWith('use ') && 
+      !line.trim().startsWith('import ') &&
+      !(line.trim().startsWith('const ') && line.includes('require('))
+    ).join('\n');
+    
+    return allImports.join('\n') + '\n\n' + existingCode + '\n\n' + newCodeContent;
+  };
 
   const deleteFile = useCallback((fileId: string) => {
     setFiles(prev => prev.filter(file => file.id !== fileId));
