@@ -43,57 +43,22 @@ const ChatInterface = ({ onAIInteraction }: ChatInterfaceProps) => {
   }, [messages]);
 
   useEffect(() => {
-    // Enhanced welcome message with strict file management information
+    // Much cleaner welcome message
     if (isConnected && userProfile && !isLoading && messages.length === 0) {
       addMessage({
         type: 'assistant',
-        content: `🚀 Welcome to ImCode Blue & Black AI Assistant! Enhanced with STRICT file management and comprehensive code generation.
+        content: `🚀 Welcome to ImCode Blue & Black AI Assistant!
 
-✨ **ENHANCED CAPABILITIES:**
+I'm specialized in creating comprehensive Move smart contracts for Umi Network with:
+• **Strict file management** - No duplicates, no empty files
+• **Smart editing** - Use "edit filename.move" to modify existing files  
+• **File references** - Reference files with "@filename" in your messages
+• **Comprehensive code** - Every file contains 200+ lines of production-ready code
+• **Persistent storage** - Your work saves automatically and persists across reloads
 
-🛡️ **STRICT FILE MANAGEMENT:**
-• **No Duplicate Files**: Absolutely no files with identical names allowed
-• **No Empty Files**: Every file contains substantial, production-ready code (200+ lines minimum)
-• **Enhanced File Finding**: Superior @filename reference system with multiple matching strategies
-• **Deep Organization**: Files auto-organized into logical, multi-level folder structures
-• **Persistent Storage**: Generated code persists across page reloads until new project
+You have **${messagesRemaining} questions** remaining.
 
-🔧 **ADVANCED FEATURES:**
-• **Edit Commands**: "edit filename.move" - finds and modifies existing files with enhanced matching
-• **File References**: "@filename" - references files in your messages with improved accuracy
-• **Move-Only Focus**: Specialized for Move smart contracts, NO Rust code generation
-• **Enterprise-Level Code**: Extensive implementations with full error handling and documentation
-• **Deployable Contracts**: All contracts are deployment-ready for Umi Network with comprehensive error logging
-
-📁 **COMPREHENSIVE PROJECT STRUCTURES:**
-• **10-20+ Files**: Every project generates extensive file structures
-• **Deep Folder Organization**: contracts/core/, scripts/deployment/, tests/integration/, etc.
-• **Complete Implementations**: Full smart contract ecosystems with governance, tokens, DeFi protocols
-• **Production-Ready**: Enterprise-level code with comprehensive testing and deployment scripts
-
-🎯 **ENHANCED FILE OPERATIONS:**
-• **Smart File Detection**: Multiple strategies for finding files (exact, case-insensitive, partial, fuzzy)
-• **Intelligent Merging**: When editing files, new code is intelligently merged with existing functionality
-• **Strict Uniqueness**: System prevents any duplicate file names with advanced checking
-• **Comprehensive Content**: No empty files - every file contains substantial, working code
-
-💡 **USAGE EXAMPLES:**
-• "Create a comprehensive DeFi liquidity pool ecosystem"
-• "edit TokenStaking.move and add reward distribution"
-• "Look at @LiquidityPool.move and create a governance system"
-• "Generate a complete NFT marketplace with all supporting contracts"
-
-⚠️ **STRICT POLICIES:**
-• ❌ **NO RUST CODE** - Only Move smart contracts and TypeScript/JavaScript utilities
-• ❌ **NO DUPLICATES** - System enforces unique file names across all directories
-• ❌ **NO EMPTY FILES** - Every file contains comprehensive, production-ready implementations
-• ✅ **COMPREHENSIVE CODE** - Every file contains extensive, production-ready implementations
-• ✅ **DEEP ORGANIZATION** - Multi-level folder structures for professional project organization
-• ✅ **PERSISTENT STORAGE** - Your work persists across page reloads until new project
-
-You have **${messagesRemaining} questions** remaining. Each generates 10-20 comprehensive files with extensive functionality!
-
-What comprehensive Move smart contract ecosystem would you like me to create?`,
+What Move smart contract ecosystem would you like me to create?`,
       });
     }
   }, [isConnected, userProfile, messagesRemaining, messages.length, isLoading, addMessage]);
@@ -492,7 +457,7 @@ What comprehensive Move smart contract ecosystem would you like me to create?`,
                 Connect Your Wallet
               </h3>
               <p className="text-electric-blue-300/80 mb-6 max-w-sm">
-                Connect your wallet to access the enhanced AI assistant with strict file management and comprehensive code generation.
+                Connect your wallet to access the AI assistant for Move smart contract development.
               </p>
               <ConnectButton />
             </div>
@@ -512,10 +477,10 @@ What comprehensive Move smart contract ecosystem would you like me to create?`,
             </div>
             <div>
               <h3 className="text-xl font-semibold text-electric-blue-100 mb-2">
-                Loading Enhanced AI Assistant
+                Loading AI Assistant
               </h3>
               <p className="text-electric-blue-300/80">
-                Setting up strict file management and comprehensive code generation systems...
+                Setting up your Move smart contract development environment...
               </p>
             </div>
           </div>
@@ -530,7 +495,7 @@ What comprehensive Move smart contract ecosystem would you like me to create?`,
         <div className="flex items-center justify-between">
           <CardTitle className="text-electric-blue-100 flex items-center gap-2">
             <MessageCircle className="w-5 h-5" />
-            Enhanced AI Assistant
+            Move AI Assistant
             <Shield className="w-4 h-4 text-green-400" />
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -549,24 +514,14 @@ What comprehensive Move smart contract ecosystem would you like me to create?`,
             </Badge>
           </div>
         </div>
-        <div className="mt-2 p-3 bg-gradient-to-r from-electric-blue-500/10 to-green-500/10 border border-electric-blue-500/20 rounded-lg">
-          <div className="text-xs text-electric-blue-300 space-y-1">
-            <div className="flex items-center gap-2">
-              <RefreshCw className="w-3 h-3" />
-              <strong>ENHANCED STRICT FEATURES:</strong>
-            </div>
-            <div className="ml-5 space-y-1">
-              <div>• <strong>🛡️ NO DUPLICATES:</strong> Absolute prevention of duplicate file names</div>
-              <div>• <strong>🚫 NO EMPTY FILES:</strong> Every file contains 200+ lines of comprehensive code</div>
-              <div>• <strong>🔍 SMART EDITING:</strong> "edit filename" with enhanced file detection</div>
-              <div>• <strong>📎 FILE REFERENCES:</strong> "@filename" with comprehensive matching</div>
-              <div>• <strong>🚫 NO RUST:</strong> Move-only focus, comprehensive implementations</div>
-              <div>• <strong>📁 DEEP ORGANIZATION:</strong> Professional multi-level folder structures</div>
-              <div>• <strong>💾 PERSISTENT:</strong> Code persists across reloads until new project</div>
-              <div>• <strong>🚀 DEPLOYABLE:</strong> All contracts are Umi Network deployment-ready</div>
+        {files.length > 0 && (
+          <div className="mt-2 p-2 bg-gradient-to-r from-electric-blue-500/10 to-green-500/10 border border-electric-blue-500/20 rounded-lg">
+            <div className="text-xs text-electric-blue-300 flex items-center gap-2">
+              <Code className="w-3 h-3" />
+              <span>{files.length} files in project • Persistent storage enabled</span>
             </div>
           </div>
-        </div>
+        )}
       </CardHeader>
       
       <CardContent className="flex-1 flex flex-col p-0 min-h-0">
@@ -645,7 +600,7 @@ What comprehensive Move smart contract ecosystem would you like me to create?`,
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Create comprehensive Move ecosystems, edit files with enhanced detection, reference files (@filename), or request deployable contracts with full error logging..."
+                placeholder="Create Move ecosystems, edit files, or reference with @filename..."
                 className="flex-1 bg-cyber-black-300/50 border-electric-blue-500/20 text-electric-blue-100 placeholder:text-electric-blue-400/60 focus:border-electric-blue-500/40 focus:ring-electric-blue-500/20"
                 disabled={isSending}
               />

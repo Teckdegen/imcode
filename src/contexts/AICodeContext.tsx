@@ -56,59 +56,98 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
   const [selectedFileId, setSelectedFileId] = useState<string>('');
   const [currentProject, setCurrentProject] = useState<ProjectData | null>(null);
 
-  // ENHANCED: Load project from localStorage on component mount
-  useEffect(() => {
-    loadProjectFromStorage();
-  }, []);
-
-  // ENHANCED: Auto-save to localStorage whenever files or project changes
-  useEffect(() => {
-    if (currentProject && files.length > 0) {
-      saveProjectToStorage();
-    }
-  }, [files, currentProject]);
-
-  // ENHANCED: Persistent storage functions
+  // FIXED: Aggressive persistence - save on every change
   const saveProjectToStorage = useCallback(() => {
-    if (!currentProject) return;
-    
     try {
-      const projectToSave = {
-        ...currentProject,
+      const projectToSave = currentProject || {
+        id: `project_${Date.now()}`,
+        name: 'Current Project',
+        files: files,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      
+      const updatedProject = {
+        ...projectToSave,
         files: files,
         updatedAt: new Date().toISOString()
       };
       
-      localStorage.setItem('imcode-current-project', JSON.stringify(projectToSave));
+      localStorage.setItem('imcode-current-project', JSON.stringify(updatedProject));
       localStorage.setItem('imcode-selected-file', selectedFileId);
-      console.log('Project saved to localStorage:', projectToSave.name, 'with', files.length, 'files');
+      localStorage.setItem('imcode-files-backup', JSON.stringify(files));
+      
+      console.log('✅ Project saved to localStorage:', updatedProject.name, 'with', files.length, 'files');
     } catch (error) {
-      console.error('Failed to save project to localStorage:', error);
+      console.error('❌ Failed to save project to localStorage:', error);
     }
   }, [currentProject, files, selectedFileId]);
 
   const loadProjectFromStorage = useCallback(() => {
     try {
+      // Try multiple sources for maximum reliability
       const savedProject = localStorage.getItem('imcode-current-project');
+      const savedFiles = localStorage.getItem('imcode-files-backup');
       const savedSelectedFile = localStorage.getItem('imcode-selected-file');
       
       if (savedProject) {
         const project: ProjectData = JSON.parse(savedProject);
-        console.log('Loading project from localStorage:', project.name, 'with', project.files.length, 'files');
+        console.log('✅ Loading project from localStorage:', project.name, 'with', project.files?.length || 0, 'files');
         
         setCurrentProject(project);
-        setFiles(project.files || []);
+        if (project.files && project.files.length > 0) {
+          setFiles(project.files);
+          console.log('✅ Restored', project.files.length, 'files from project');
+        }
         
-        if (savedSelectedFile && project.files.some(f => f.id === savedSelectedFile)) {
+        if (savedSelectedFile && project.files?.some(f => f.id === savedSelectedFile)) {
           setSelectedFileId(savedSelectedFile);
-        } else if (project.files.length > 0) {
+        } else if (project.files && project.files.length > 0) {
           setSelectedFileId(project.files[0].id);
+        }
+      } else if (savedFiles) {
+        // Fallback to files backup
+        const filesBackup: FileItem[] = JSON.parse(savedFiles);
+        console.log('✅ Loading files from backup:', filesBackup.length, 'files');
+        setFiles(filesBackup);
+        
+        if (savedSelectedFile && filesBackup.some(f => f.id === savedSelectedFile)) {
+          setSelectedFileId(savedSelectedFile);
+        } else if (filesBackup.length > 0) {
+          setSelectedFileId(filesBackup[0].id);
         }
       }
     } catch (error) {
-      console.error('Failed to load project from localStorage:', error);
+      console.error('❌ Failed to load project from localStorage:', error);
     }
   }, []);
+
+  // Load immediately on mount
+  useEffect(() => {
+    loadProjectFromStorage();
+  }, [loadProjectFromStorage]);
+
+  // ENHANCED: Save aggressively on every change
+  useEffect(() => {
+    if (files.length > 0) {
+      const timeoutId = setTimeout(() => {
+        saveProjectToStorage();
+      }, 100); // Very short delay to batch rapid changes
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [files, saveProjectToStorage]);
+
+  // Also save when selected file changes
+  useEffect(() => {
+    if (selectedFileId && files.length > 0) {
+      const timeoutId = setTimeout(() => {
+        saveProjectToStorage();
+      }, 100);
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [selectedFileId, files.length, saveProjectToStorage]);
 
   // STRICT unique filename generation - absolutely no duplicates allowed
   const getUniqueFileName = useCallback((fileName: string): string => {
@@ -393,15 +432,7 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
     }
     
     // STRICT duplicate prevention
-    if (preventDuplicateFiles(fileName)) {
-      console.warn('Preventing duplicate file creation:', fileName);
-      const uniqueName = getUniqueFileName(fileName);
-      console.log('Using unique name instead:', uniqueName);
-      fileName = uniqueName;
-    }
-
-    // Check if file already exists and should be updated instead
-    const existingFile = findFileByName(fileName);
+    const existingFile = files.find(f => f.name.toLowerCase() === fileName.toLowerCase());
     if (existingFile) {
       console.log('File exists, updating instead of creating:', existingFile.name);
       updateFile(existingFile.id, content);
@@ -409,62 +440,46 @@ export const AICodeProvider: React.FC<AICodeProviderProps> = ({ children }) => {
       return;
     }
 
-    // Organize into improved directory structure
-    const organizedPath = organizeFileIntoDirectory(fileName, content, type);
-    const finalFileName = getUniqueFileName(organizedPath);
-    
-    const uniqueId = `${finalFileName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const uniqueId = `${fileName.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const newFile: FileItem = {
       id: uniqueId,
-      name: finalFileName,
+      name: fileName,
       type: 'file',
       content: content,
       parentId: undefined
     };
 
-    console.log('Creating new file:', newFile.name, 'Content length:', content.length);
-    setFiles(prev => [...prev, newFile]);
+    console.log('✅ Creating new file:', newFile.name, 'Content length:', content.length);
+    setFiles(prev => {
+      const updated = [...prev, newFile];
+      console.log('✅ Files updated, total:', updated.length);
+      return updated;
+    });
     setSelectedFileId(newFile.id);
     
-    // Update current project if exists
-    if (currentProject) {
-      const updatedProject = {
-        ...currentProject,
-        files: [...files, newFile],
-        updatedAt: new Date().toISOString()
-      };
-      setCurrentProject(updatedProject);
-    }
-  }, [files, getUniqueFileName, organizeFileIntoDirectory, currentProject, findFileByName, preventDuplicateFiles, validateFileContent]);
+    // Update current project
+    setCurrentProject(prev => ({
+      ...prev,
+      id: prev?.id || `project_${Date.now()}`,
+      name: prev?.name || 'Current Project',
+      files: [...files, newFile],
+      createdAt: prev?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }));
+  }, [files]);
 
   const updateFile = useCallback((fileId: string, content: string) => {
-    console.log('Updating file with ID:', fileId);
+    console.log('✅ Updating file with ID:', fileId);
     
-    // Validate content before updating
-    const file = files.find(f => f.id === fileId);
-    if (file && !validateFileContent(content, file.name)) {
-      console.warn('Update rejected due to insufficient content:', file.name);
-      return;
-    }
-    
-    setFiles(prev => prev.map(file => 
-      file.id === fileId ? { ...file, content } : file
-    ));
-    
-    // Update current project if exists
-    if (currentProject) {
-      const updatedFiles = files.map(file => 
+    setFiles(prev => {
+      const updated = prev.map(file => 
         file.id === fileId ? { ...file, content } : file
       );
-      const updatedProject = {
-        ...currentProject,
-        files: updatedFiles,
-        updatedAt: new Date().toISOString()
-      };
-      setCurrentProject(updatedProject);
-    }
-  }, [files, currentProject, validateFileContent]);
+      console.log('✅ File updated, total files:', updated.length);
+      return updated;
+    });
+  }, []);
 
   // ENHANCED edit file by name with comprehensive file finding
   const editFileByName = useCallback((fileName: string, content: string): boolean => {
