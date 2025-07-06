@@ -5,7 +5,7 @@ import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactNode } from 'react';
 
-// Umi Network configuration
+// Umi Network configuration with the correct RPC URL
 const umiNetwork = {
   id: 42069, // Umi chain ID
   name: 'Umi Devnet',
@@ -16,10 +16,10 @@ const umiNetwork = {
   },
   rpcUrls: {
     default: {
-      http: ['https://devnet.moved.network'],
+      http: ['https://devnet.uminetwork.com'],
     },
     public: {
-      http: ['https://devnet.moved.network'],
+      http: ['https://devnet.uminetwork.com'],
     },
   },
   blockExplorers: {
