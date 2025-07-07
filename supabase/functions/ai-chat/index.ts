@@ -389,14 +389,14 @@ module MyAddress::ComprehensiveTokenEcosystem {
 
 REMEMBER: Generate EXTENSIVE, COMPREHENSIVE, DEPLOYMENT-READY code. Each file should be substantial with complete implementations, not minimal examples. NO EMPTY FILES EVER.${referencedFiles}`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: systemPrompt },
           ...(context || []),
