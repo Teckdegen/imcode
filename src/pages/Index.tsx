@@ -161,7 +161,7 @@ const Index = () => {
 
                 {/* Footer */}
                 <footer className="mt-16 text-center text-electric-blue-400/60 text-sm">
-                  <p>© 2024 ImCode Blue & Black. Built for Umi Network developers with ❤️</p>
+                  <p>© 2025 ImCode Blue & Black. Built for Umi Network developers with ❤️</p>
                 </footer>
               </main>
             </div>
